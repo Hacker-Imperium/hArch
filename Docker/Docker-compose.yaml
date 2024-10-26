@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  archlinux:
+    build: .
+    container_name: hArch
+    networks:
+      - hacking_net
+
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: dvwa
+    ports:
+      - "8080:80"
+    environment:
+      - MYSQL_PASS="password" # Change this as needed
+    networks:
+      - hacking_net
+    volumes:
+      - dvwa_data:/var/www/html
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/login.php"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
+
+  juice-shop:
+    image: bkimminich/juice-shop
+    container_name: juice_shop
+    ports:
+      - "3000:3000"
+    networks:
+      - hacking_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+
+  webgoat:
+    image: webgoat/goatandwolf
+    container_name: webgoat
+    ports:
+      - "8081:8080"
+      - "9090:9090"
+    networks:
+      - hacking_net
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - hacking_net
+
+networks:
+  hacking_net:
+    driver: bridge
+
+volumes:
+  dvwa_data:

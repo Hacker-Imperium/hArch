@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+
+# ---------------------------------------------------------------
+#hArchPost - Post install - Downloadeded after hArch finishes    |
+# ---------------------------------------------------------------
+# Author    : Binary-Brawler                                     |
+# Github    : github.com/Binary-Brawler                          |
+# LinkedIn  : linkedin.com/in/brandon-walker-0b0542116/          |
+# Version   : 1.1.2                                              |
+# Intent    : Simplistic Linux box for Red Teaming/Pentesting    |
+# ---------------------------------------------------------------
+#                  Function - Purpose                            |
+# -----------------------------------------------------------------------------------
+# slear                       - Repeated Sleep/Clear function                        |
+# greeter                     - Entrypoint                                           |
+# p_Download                  - Checks boolean value from previous script            |
+# installer                   - Set Hostname & install useful packages               |
+# desktop_Env                 - Sets MATE by default (low specs)                     |
+# dev_Setup                   - Installs coders env i.e. IDE's, Languages and vimrc  |
+# vid_driver                  - Installs driver based off lspci                      |
+# user_Info                   - Set ROOT pass and create user account                |
+# booter                      - Bootloader function, eventually will be automated    |
+# black_Arch                  - Install BlackArch Repository                         |
+# hack_Tools                  - Installs tools or skip                               |
+# complete                    - Finish last minute setup and cleanup                 |
+# one_Func_To_Rule_Them_All   - Iterative function to run functions                  |
+# and_In_The_Script_Bind_Them - Encoded functions to run                             |
+# -----------------------------------------------------------------------------------
+
+# Constants
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+WHITE='\033[0;37m'
+YELLOW='\033[0;33m'
+PURPLE='\033[0;35m'
+RESET='\033[0m'
+NEWLINE=$'\n'
+GITHUB='https://raw.githubusercontent.com/Binary-Brawler/hArch'
+
+# Logging
+log_warning() { echo -e "[${YELLOW}WARNING${RESET}] $1"; }
+log_error() { echo -e "[${RED}ERROR${RESET}] $1"; }
+print_info() { echo -e "[${GREEN}INFO${RESET}] $1${NEWLINE}"; }
+log_success() {
+    local num_quotes=${#motivational_quotes[@]}
+    local random_index=$((RANDOM % num_quotes))
+    local random_quote="${motivational_quotes[$random_index]}"
+    echo -e "${GREEN}[SUCCESS]${RESET} $1"
+    echo ${NEWLINE}
+    echo "Motivational Quote: $random_quote"
+    echo ${NEWLINE}
+}
+
+motivational_quotes=(
+    "Success is not final, failure is not fatal: It is the courage to continue that counts. - Winston Churchill"
+    "Hardships often prepare ordinary people for an extraordinary destiny. - C.S. Lewis"
+    "Believe you can and you're halfway there. - Theodore Roosevelt"
+    "The only limit to our realization of tomorrow will be our doubts of today. - Franklin D. Roosevelt"
+    "It does not matter how slowly you go as long as you do not stop. - Confucius"
+    "You are never too old to set another goal or to dream a new dream. - C.S. Lewis"
+    "The only way to achieve the impossible is to believe it is possible. - Charles Kingsleigh (Alice in Wonderland)"
+)
+
+function slear {
+    sleep 3
+    clear
+}
+
+function p_Download {
+    slear
+    echo "--------------------------------"
+    enable_parallel=$(cat /enable_parallel.txt)
+
+    if [ "$enable_parallel" = "true" ]; then
+        sed -i '/#ParallelDownloads/s/^#//g' /etc/pacman.conf
+        print_info "Parallel Downloads Enabled."
+        rm /enable_parallel.txt
+    else
+        print_info "Parallel Downloads Disabled."
+        rm /enable_parallel.txt
+    fi
+}
+
+function installer {
+    echo "-------------------------------------------------------"
+    print_info "What would you like your system name set too..."
+    read -p "Enter Hostname: " hostname
+    echo $hostname > /etc/hostname
+    slear
+    echo  "------------------------------------"
+    print_info "Installing useful packages..." 
+    pacman -S dkms linux-headers mlocate cmake neofetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf remmina dconf-editor fish noto-fonts ttf-ubuntu-font-family ttf-dejavu ttf-freefont ttf-liberation ttf-droid ttf-roboto terminus-font rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm >/dev/null 2>&1
+    hwclock --systohc
+}
+
+function desktop_Env {
+    echo "------------------------"
+    print_info "Setting up DE..."
+    pacman -S  mate mate-extra lightdm lightdm-gtk-greeter xorg xorg-server xorg-apps xorg-xinit --noconfirm >/dev/null 2>&1
+    systemctl enable lightdm >/dev/null 2>&1
+    sleep 3
+    curl -O $GITHUB/main/conf/linux-vs-windows.jpg >/dev/null 2>&1
+    mv /linux-vs-windows.jpg /usr/share/backgrounds/mate/desktop/linux-vs-windows.jpg
+    curl -O $GITHUB/main/conf/MateConfig >/dev/null 2>&1
+}
+
+function dev_Setup {
+    echo "--------------------------------"
+    read -p "Can you code? [Y/n]: " coder
+    if [[ $coder == 'y' || $coder == 'Y' ]]; then
+        echo "-------------------------------------------------------"
+        print_info "Setting up a coding env... This may take awhile"
+        echo "-------------------------------------------------------"
+        users=$(ls /home)
+        curl -O $GITHUB/main/vimrc_bundle_conf >/dev/null 2>&1
+        mv vimrc_bundle_conf /home/$users/.vimrc
+        pacman -S jdk-openjdk python-pip rustup go nodejs npm python3 git code neovim gimp audacity wireshark-qt vlc btop virtualbox postman docker pycharm-community-edition intellij-idea-community-edition --noconfirm >/dev/null 2>&1 
+    else
+        log_warning "Do you know where the term Script Kiddie comes from?"
+        slear
+    fi
+}
+
+# Nvidia function to handle nvidia driver installation... WIP
+# vidDriver will handle for now...
+function handle_Nvidia {
+    NVD='NVIDIA'
+    card=$(lspci -vmm | grep VGA -A6)
+    if [[ $card == *"$NVD"* ]]; then
+        print_info "Nvidia graphics detected. Applying configuration..."
+        # Add Nvidia-specific configurations here
+        # This will replace vidDriver() NVD case
+    fi
+}
+
+function vid_Driver {
+    echo "----------------------------------"
+    print_info "Gathering Graphics info..."
+    sleep 2
+    str=$(lspci -vmm | grep VGA -A6)
+    AMD='AMD'
+    NVD='NVIDIA'
+    case $str in
+        *"$AMD"*)
+            print_info "Installing AMD Drivers..."
+            echo "------------------------------------"
+            pacman -S xf86-video-ati xf86-video-amdgpu mesa --noconfirm >/dev/null
+            ;;
+        *"$NVD"*)
+            print_info "Installing NVIDIA Drivers..."
+            echo "-------------------------------------"
+            pacman -S nvidia nvidia-settings nvidia-utils glxinfo nvtop --noconfirm >/dev/null
+            curl -O $GITHUB/main/conf/nvidia.hook 2>/dev/null
+            curl -O $GITHUB/main/conf/20-nvidia.conf 2>/dev/null
+            mv /nvidia.hook /etc/pacman.d/hooks/
+            mv /20-nvidia.conf /etc/X11/xorg.conf.d/
+            bash -c "echo blacklist nouveau > /etc/modprobe.d/blacklist-nvidia-nouveau.conf"
+            echo "-------------------------------------------------------------"
+            print_info "Attempting too force composition..."
+            print_info "[!] Usually fixes screen tearing w/ Nvidia drivers..."
+            bash -c "nvidia-settings --assign CurrentMetaMode=\"$(nvidia-settings -q CurrentMetaMode -t | sed 's/"/\\"/g; s/}/, ForceCompositionPipeline = On}/')\""
+            # FIXME
+            # Add changes to mkinitcpio.conf - WIP
+            # If issues, try:
+            # xrandr --setprovideroutputsource modesetting NVIDIA-0
+            # xrandr --auto
+            ;;
+        *)
+            print_info "Unable to determine Graphics info.. Installing default drivers"
+            echo "----------------------------------------------------------------------"
+            pacman -S xf86-video-fbdev --noconfirm
+    esac
+}
+
+function user_Info {
+    echo "--------------------------------"
+    print_info "Setting Root password..."
+    passwd
+    slear
+    echo "-------------------------------"
+    print_info "Creating user account..."
+    read -p "Enter Username: " username
+    useradd -mg users -G wheel,power,storage -s /usr/bin/fish $username
+    echo '%wheel ALL=(ALL:ALL) ALL' >> /etc/sudoers.d/wheel_group
+    chmod 440 /etc/sudoers.d/wheel_group
+    echo "-------------------------------------"
+    print_info "Setting $username password..."
+    passwd $username
+    curl -O $GITHUB/main/conf/fish.config >/dev/null 2>&1
+    mkdir -p /home/$username/.config/fish
+    mv /fish.config /home/$username/.config/fish/config.fish
+    chown $username -R /home/$username/.config/
+    mkdir -p /home/$username/AUR
+    chown -R $username /home/$username/AUR
+    curl -O $GITHUB/main/conf/smb.conf >/dev/null 2>&1
+    mv /smb.conf /etc/samba/smb.conf
+}
+
+function booter {
+    echo "-----------------------------"
+    print_info "Setting Bootloader..."
+    drives=$(lsblk -f)
+    echo -e "$drives${NEWLINE}"
+    echo -e "[${YELLOW}SYNTAX${RESET}] If BIOS, attach bootloader to disk: ex- /dev/sda"
+    echo -e "[${YELLOW}SYNTAX${RESET}] If UEFI, attach bootloader to partition: ex- /dev/nvme0n1p1"
+    echo "-----------------------------------------------------------------------------------------------------"
+    read -p "Enter Drive/Partition to install Bootloader [Example: /dev/nvme0n1p1]: " drive
+    slear
+    if [[ -d "/sys/firmware/efi" ]]; then
+        echo "-------------------------------------"
+        print_info "Installing UEFI Bootloader..."
+        pacman -S efibootmgr grub dosfstools mtools os-prober --noconfirm >/dev/null
+        grub-install --target=x86_64-efi --bootloader-id=HARCH_UEFI --efi-directory=/boot/EFI --recheck
+        grub-mkconfig -o /boot/grub/grub.cfg
+        mkinitcpio -p linux
+    else
+        echo "-------------------------------------"
+        print_info "Installing BIOS Bootloader..."
+        pacman -S grub --noconfirm >/dev/null
+        grub-install --target=i386-pc $drive --recheck
+        grub-mkconfig -o /boot/grub/grub.cfg
+        mkinitcpio -p linux
+    fi
+}
+
+function black_Arch {
+    echo "-----------------------------------------------------------"
+    print_info "Installing BlackArch Repo and setting up keyring..."
+    curl -O 'https://blackarch.org/strap.sh' >/dev/null 2>&1
+    chmod +x strap.sh
+    ./strap.sh >/dev/null
+    sleep 3
+    rm /strap.sh
+    print_info "Updating Blackarch Keyring"
+    pacman -Syu --noconfirm >/dev/null 2>&1
+}
+
+function hack_Tools {
+    echo "---------------------------------------------------------------"
+    read -p 'Do you want to INSTALL the Master Hacking Toolset? [y/N]: ' ht
+    if [[ $ht == 'y' || $ht == 'Y' ]]; then
+        print_info "Installing Master Hacking Toolset... Go grab a drink!"
+        curl -O $GITHUB/main/Tools/Master >/dev/null 2>&1
+        pacman -S - < /Master --noconfirm >/dev/null 2>&1
+        rm /Master
+    else
+        log_warning "Skipping..."
+    fi
+}
+
+function complete {
+    slear
+    echo "-------------------------------------------------------------------------------------------------"
+    neofetch
+    echo "-------------------------------------------------------------------------------------------------"
+    log_success "hArch has been successfully installed on your system"
+    print_info "-------------------------------------------------------"
+    print_info "Hack the Universe $username" x_X
+    print_info "-------------------------------------------------------"
+    log_warning "A reboot should now take place"
+    print_info "Run the following commands to reboot properly:"
+    log_warning "1: exit"
+    log_warning "2: umount -a"
+    log_warning "3: reboot"
+    rm /hArchPost
+    exit
+}
+
+function one_Func_To_Rule_Them_All {
+    local funcs=($(and_In_The_Script_Bind_Them))
+
+    for func in "${funcs[@]}"; do
+        $func
+        slear
+    done
+}
+
+# Because why not...
+function and_In_The_Script_Bind_Them {
+    local encoded="cF9Eb3dubG9hZCBpbnN0YWxsZXIgdXNlcl9JbmZvIHZpZF9Ecml2ZXIgYm9vdGVyIGJsYWNrX0FyY2ggaGFja19Ub29scyBkZXNrdG9wX0VudiBkZXZfU2V0dXAgY29tcGxldGUK"
+    
+    # Too easy ;)
+    echo "$encoded" | base64 --decode
+}
+
+one_Func_To_Rule_Them_All
