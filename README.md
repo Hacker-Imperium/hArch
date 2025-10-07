@@ -1,5 +1,5 @@
 # hArch {Hackers Arch} 
-Version 1.0.2 
+Version 1.0.5 
 
 ![hArch](https://github.com/Binary-Brawler/hArch/assets/132982785/8000c3cd-1d2e-4377-91f3-2fec7cb800c2)
 
@@ -68,7 +68,7 @@ During the installation process, you'll encounter a prompt to either download th
 - [ ] Kernel choice
 - [ ] Disk encryption during install
 - [ ] URL shortener
-- [ ] Fix NVIDIA drivers not working
+- [X] Fix NVIDIA drivers not working
 - [ ] Auto add bootloader
 - [X] Improve Hacker lab
 - [ ] 2024 Tools/Wordlist improvements
