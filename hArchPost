@@ -231,7 +231,33 @@ function booter {
     echo "-----------------------------------------------------------------------------------------------------"
     read -p "Enter Drive/Partition to install Bootloader [Example: /dev/nvme0n1p1]: " drive
     slear
-    if [[ -d "/sys/firmware/efi" ]]; then
+    
+    # Use firmware type detected by hArch script
+    local is_uefi=false
+    if [[ -f "/firmware_type.txt" ]]; then
+        is_uefi=$(cat /firmware_type.txt)
+        if [[ "$is_uefi" == "true" ]]; then
+            print_info "Using UEFI firmware (detected by hArch)"
+        else
+            print_info "Using BIOS firmware (detected by hArch)"
+        fi
+        rm /firmware_type.txt
+    else
+        # Fallback to detection if file not found
+        log_warning "firmware_type.txt not found, falling back to detection"
+        if [[ -d "/sys/firmware/efi/efivars/" ]] && [[ -d "/sys/firmware/efi" ]] && [[ -f "/sys/firmware/efi/fw_platform_size" ]]; then
+            if ls /sys/firmware/efi/efivars/ >/dev/null 2>&1; then
+                is_uefi=true
+                print_info "Detected UEFI firmware"
+            else
+                print_info "EFI directory exists but variables not accessible - treating as BIOS"
+            fi
+        else
+            print_info "Detected BIOS firmware"
+        fi
+    fi
+    
+    if [[ "$is_uefi" == "true" ]]; then
         echo "-------------------------------------"
         print_info "Installing UEFI Bootloader..."
         pacman -S efibootmgr grub dosfstools mtools os-prober --noconfirm >/dev/null
