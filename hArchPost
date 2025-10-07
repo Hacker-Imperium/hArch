@@ -299,6 +299,60 @@ function hack_Tools {
     fi
 }
 
+function docker_Lab {
+    echo "---------------------------------------------------------------"
+    read -p 'Do you want to INSTALL the Docker Home Lab? [y/N]: ' dl
+    if [[ $dl == 'y' || $dl == 'Y' ]]; then
+        print_info "Installing Docker Home Lab..."
+        echo "------------------------------------"
+        
+        # Install Docker
+        print_info "Installing Docker..."
+        pacman -S docker docker-compose --noconfirm >/dev/null 2>&1
+        
+        # Enable Docker service
+        systemctl enable docker >/dev/null 2>&1
+        systemctl start docker >/dev/null 2>&1
+        
+        # Add user to docker group
+        usermod -aG docker $username >/dev/null 2>&1
+        
+        # Create Docker lab directory
+        mkdir -p /home/$username/docker-lab
+        cd /home/$username/docker-lab
+        
+        # Copy Docker files from /Docker directory
+        print_info "Copying Docker lab files..."
+        cp /Docker/Dockerfile /home/$username/docker-lab/
+        cp /Docker/Docker-compose.yaml /home/$username/docker-lab/
+        cp /Docker/start-lab.sh /home/$username/docker-lab/
+        cp /Docker/README.md /home/$username/docker-lab/
+        cp /Docker/.dockerignore /home/$username/docker-lab/
+        
+        # Make startup script executable
+        chmod +x start-lab.sh
+        
+        # Set ownership
+        chown -R $username:$username /home/$username/docker-lab
+        
+        print_info "Docker lab installed successfully!"
+        echo "------------------------------------"
+        print_info "Docker lab location: /home/$username/docker-lab"
+        print_info "To start the lab: cd /home/$username/docker-lab && ./start-lab.sh"
+        print_info "Available vulnerable apps:"
+        echo "  - DVWA: http://localhost:8080 (admin/password)"
+        echo "  - Juice Shop: http://localhost:3000 (admin/admin123)"
+        echo "  - WebGoat: http://localhost:8081 (webgoat/webgoat)"
+        echo "  - Mutillidae: http://localhost:8082 (admin/admin)"
+        echo "  - Metasploitable 2: SSH localhost:2222 (msfadmin/msfadmin)"
+        echo "  - Kioptrix Level 1: http://localhost:8083 (root/root)"
+        echo "------------------------------------"
+        log_success "Docker Home Lab ready for use!"
+    else
+        log_warning "Skipping Docker lab installation..."
+    fi
+}
+
 function complete {
     slear
     echo "-------------------------------------------------------------------------------------------------"
@@ -314,6 +368,7 @@ function complete {
     log_warning "2: umount -a"
     log_warning "3: reboot"
     rm /hArchPost
+    rm -rf /Docker
     exit
 }
 
@@ -328,7 +383,7 @@ function one_Func_To_Rule_Them_All {
 
 # Because why not...
 function and_In_The_Script_Bind_Them {
-    local encoded="cF9Eb3dubG9hZCBpbnN0YWxsZXIgdXNlcl9JbmZvIHZpZF9Ecml2ZXIgYm9vdGVyIGJsYWNrX0FyY2ggaGFja19Ub29scyBkZXNrdG9wX0VudiBkZXZfU2V0dXAgY29tcGxldGUK"
+    local encoded="cF9Eb3dubG9hZCBpbnN0YWxsZXIgdXNlcl9JbmZvIHZpZF9Ecml2ZXIgYm9vdGVyIGJsYWNrX0FyY2ggaGFja19Ub29scyBkb2NrZXJfTGFiIGRlc2t0b3BfRW52IGRldl9TZXR1cCBjb21wbGV0ZQo="
     
     # Too easy ;)
     echo "$encoded" | base64 --decode

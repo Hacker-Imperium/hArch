@@ -259,9 +259,21 @@ function last_Min_Setup {
     curl -O $GITHUB/main/hArchPost >/dev/null 2>&1
     chmod +x hArchPost
     mv hArchPost /mnt
+    
+    # Create Docker directory and copy Docker lab files
+    mkdir -p /mnt/Docker
+    print_info "Downloading Docker lab files for optional installation..."
+    curl -O $GITHUB/main/Docker/Dockerfile >/dev/null 2>&1
+    curl -O $GITHUB/main/Docker/Docker-compose.yaml >/dev/null 2>&1
+    curl -O $GITHUB/main/Docker/start-lab.sh >/dev/null 2>&1
+    curl -O $GITHUB/main/Docker/README.md >/dev/null 2>&1
+    curl -O $GITHUB/main/Docker/.dockerignore >/dev/null 2>&1
+    mv Dockerfile Docker-compose.yaml start-lab.sh README.md .dockerignore /mnt/Docker/
+    
     echo  "----------------------------"
     print_info "Time to enter CHROOT"
     print_info "The final script has been installed and moved to your new root directory"
+    print_info "Docker lab files are available in /Docker/ for optional installation"
     print_info "Run these commands to finish setup"
     echo "------------------------------------------"
     echo ${NEWLINE}

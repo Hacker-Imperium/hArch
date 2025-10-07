@@ -1,0 +1,31 @@
+# Git
+.git
+.gitignore
+README.md
+
+# Documentation
+*.md
+docs/
+
+# Scripts (except the ones we need)
+scripts/
+*.sh
+
+# Configuration files
+conf/
+*.conf
+
+# Tools and wordlists (these are large and not needed in container)
+Tools/
+Wordlists/
+
+# Other files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Docker files
+Dockerfile
+docker-compose.yaml
+.dockerignore

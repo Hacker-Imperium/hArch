@@ -1,19 +1,47 @@
 version: '3.8'
 
 services:
-  archlinux:
+  # Main hArch hacking environment
+  harch:
     build: .
-    container_name: hArch
+    container_name: harch_lab
+    hostname: harch-lab
+    restart: unless-stopped
     networks:
       - hacking_net
+    volumes:
+      - harch_workspace:/home/hacker/workspace
+      - harch_tools:/home/hacker/tools
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # For Docker-in-Docker
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+    ports:
+      - "4444:4444"  # Metasploit
+      - "8080:8080"  # DVWA
+      - "8081:8081"  # WebGoat
+      - "8082:8082"  # Mutillidae
+      - "3000:3000"  # Juice Shop
+      - "9090:9090"  # WebWolf
+    healthcheck:
+      test: ["CMD", "pgrep", "tail"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
 
+  # Damn Vulnerable Web Application
   dvwa:
     image: vulnerables/web-dvwa
     container_name: dvwa
+    hostname: dvwa
+    restart: unless-stopped
     ports:
       - "8080:80"
     environment:
-      - MYSQL_PASS="password" # Change this as needed
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=p@ssw0rd
     networks:
       - hacking_net
     volumes:
@@ -21,43 +49,182 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/login.php"]
       interval: 30s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
       timeout: 10s
 
+  # OWASP Juice Shop
   juice-shop:
     image: bkimminich/juice-shop
     container_name: juice_shop
+    hostname: juice-shop
+    restart: unless-stopped
     ports:
       - "3000:3000"
     networks:
       - hacking_net
+    environment:
+      - NODE_ENV=unsafe
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: "512M"
+          cpus: "1.0"
+          memory: "1G"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      retries: 3
+      start_period: 30s
+      timeout: 10s
 
+  # OWASP WebGoat & WebWolf
   webgoat:
     image: webgoat/goatandwolf
     container_name: webgoat
+    hostname: webgoat
+    restart: unless-stopped
     ports:
-      - "8081:8080"
-      - "9090:9090"
+      - "8081:8080"  # WebGoat
+      - "9090:9090"  # WebWolf
     networks:
       - hacking_net
+    environment:
+      - WEBGOAT_PORT=8080
+      - WEBWOLF_PORT=9090
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/WebGoat/login"]
+      interval: 30s
+      retries: 5
+      start_period: 60s
+      timeout: 10s
 
+  # Mutillidae II
+  mutillidae:
+    image: citizenstig/nowasp
+    container_name: mutillidae
+    hostname: mutillidae
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    networks:
+      - hacking_net
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+    volumes:
+      - mutillidae_data:/var/www/html
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/mutillidae/"]
+      interval: 30s
+      retries: 3
+      start_period: 30s
+      timeout: 10s
+
+  # VulnHub - Metasploitable 2
+  metasploitable:
+    image: tleemcjr/metasploitable2
+    container_name: metasploitable2
+    hostname: metasploitable2
+    restart: unless-stopped
+    networks:
+      - hacking_net
+    ports:
+      - "2222:22"    # SSH
+      - "2121:21"    # FTP
+      - "3306:3306"  # MySQL
+      - "5432:5432"  # PostgreSQL
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "22"]
+      interval: 30s
+      retries: 3
+      start_period: 30s
+      timeout: 10s
+
+  # VulnHub - Kioptrix Level 1
+  kioptrix:
+    image: vulhub/kioptrix:1
+    container_name: kioptrix1
+    hostname: kioptrix1
+    restart: unless-stopped
+    networks:
+      - hacking_net
+    ports:
+      - "2223:22"    # SSH
+      - "8083:80"    # HTTP
+      - "139:139"    # SMB
+      - "445:445"    # SMB
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "80"]
+      interval: 30s
+      retries: 3
+      start_period: 30s
+      timeout: 10s
+
+  # Network monitoring and logging
   watchtower:
     image: containrrr/watchtower
     container_name: watchtower
+    restart: unless-stopped
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
     networks:
       - hacking_net
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=3600
+    command: --interval 3600 --cleanup
+
+  # ELK Stack for log analysis (optional)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    hostname: elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    networks:
+      - hacking_net
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    profiles:
+      - logging
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    hostname: kibana
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - hacking_net
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    profiles:
+      - logging
 
 networks:
   hacking_net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
+  harch_workspace:
+    driver: local
+  harch_tools:
+    driver: local
   dvwa_data:
+    driver: local
+  mutillidae_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
