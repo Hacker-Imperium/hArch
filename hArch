@@ -138,6 +138,24 @@ function validate_partitions {
             return 1
         fi
         print_info "✓ GPT partition table confirmed for UEFI"
+        
+        # Additional UEFI validation - check for EFI System Partition
+        local efi_partition=""
+        if [[ $drive == *nvme* ]]; then
+            efi_partition="${drive}p1"
+        elif [[ $drive == *sd* ]]; then
+            efi_partition="${drive}1"
+        fi
+        
+        if [[ -n "$efi_partition" ]]; then
+            local efi_type=$(fdisk -l "$efi_partition" 2>/dev/null | grep "Type:" | awk '{print $2}')
+            if [[ "$efi_type" == "EFI"* ]]; then
+                print_info "✓ EFI System Partition confirmed"
+            else
+                log_warning "EFI partition type may not be correct: $efi_type"
+            fi
+        fi
+        
     else
         if [[ "$partition_table" != "dos" ]]; then
             log_error "BIOS detected but MBR partition table not found!"
@@ -205,26 +223,66 @@ function partition_Drive {
     fi
 
     if [[ "$is_uefi" == "true" ]]; then
+        print_info "Setting up UEFI partitions..."
+        
         if [[ $drive == *nvme* ]]; then
-            mkfs.fat -F32 "${drive}p1" 
-            mkswap "${drive}p2"         
-            mkfs.ext4 "${drive}p3"      
+            print_info "Formatting EFI partition (${drive}p1) as FAT32..."
+            mkfs.fat -F32 "${drive}p1" || { log_error "Failed to format EFI partition"; return 1; }
+            
+            print_info "Setting up SWAP partition (${drive}p2)..."
+            mkswap "${drive}p2" || { log_error "Failed to setup SWAP partition"; return 1; }
+            
+            print_info "Formatting ROOT partition (${drive}p3) as ext4..."
+            mkfs.ext4 "${drive}p3" || { log_error "Failed to format ROOT partition"; return 1; }
 
-            mount "${drive}p3" /mnt
-            mkdir -p /mnt/boot/EFI
-            mount "${drive}p1" /mnt/boot/EFI
-            swapon "${drive}p2"
+            print_info "Mounting ROOT partition..."
+            mount "${drive}p3" /mnt || { log_error "Failed to mount ROOT partition"; return 1; }
+            
+            print_info "Creating EFI boot directory..."
+            mkdir -p /mnt/boot/EFI || { log_error "Failed to create EFI directory"; return 1; }
+            
+            print_info "Mounting EFI partition..."
+            mount "${drive}p1" /mnt/boot/EFI || { log_error "Failed to mount EFI partition"; return 1; }
+            
+            print_info "Enabling SWAP..."
+            swapon "${drive}p2" || { log_error "Failed to enable SWAP"; return 1; }
+            
         elif [[ $drive == *sd* ]]; then
-            mkfs.fat -F32 "${drive}1" 
-            mkswap "${drive}2"         
-            mkfs.ext4 "${drive}3"      
+            print_info "Formatting EFI partition (${drive}1) as FAT32..."
+            mkfs.fat -F32 "${drive}1" || { log_error "Failed to format EFI partition"; return 1; }
+            
+            print_info "Setting up SWAP partition (${drive}2)..."
+            mkswap "${drive}2" || { log_error "Failed to setup SWAP partition"; return 1; }
+            
+            print_info "Formatting ROOT partition (${drive}3) as ext4..."
+            mkfs.ext4 "${drive}3" || { log_error "Failed to format ROOT partition"; return 1; }
 
-            mount "${drive}3" /mnt
-            mkdir -p /mnt/boot/EFI
-            mount "${drive}1" /mnt/boot/EFI
-            swapon "${drive}2"
+            print_info "Mounting ROOT partition..."
+            mount "${drive}3" /mnt || { log_error "Failed to mount ROOT partition"; return 1; }
+            
+            print_info "Creating EFI boot directory..."
+            mkdir -p /mnt/boot/EFI || { log_error "Failed to create EFI directory"; return 1; }
+            
+            print_info "Mounting EFI partition..."
+            mount "${drive}1" /mnt/boot/EFI || { log_error "Failed to mount EFI partition"; return 1; }
+            
+            print_info "Enabling SWAP..."
+            swapon "${drive}2" || { log_error "Failed to enable SWAP"; return 1; }
+            
         else
-            echo "Error: Something went wrong with UEFI install..."
+            log_error "Unsupported drive type for UEFI installation: $drive"
+            return 1
+        fi
+        
+        print_info "UEFI partition setup completed successfully"
+        print_info "EFI partition mounted at: /mnt/boot/EFI"
+        print_info "ROOT partition mounted at: /mnt"
+        
+        # Verify EFI partition setup
+        if [[ -d "/mnt/boot/EFI" ]] && mountpoint -q "/mnt/boot/EFI"; then
+            print_info "✓ EFI partition successfully mounted and accessible"
+        else
+            log_error "EFI partition mount verification failed!"
             return 1
         fi
     else
