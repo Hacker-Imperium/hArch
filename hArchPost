@@ -101,9 +101,22 @@ function desktop_Env {
     pacman -S  mate mate-extra lightdm lightdm-gtk-greeter xorg xorg-server xorg-apps xorg-xinit --noconfirm >/dev/null 2>&1
     systemctl enable lightdm >/dev/null 2>&1
     sleep 3
-    curl -O $GITHUB/main/conf/linux-vs-windows.jpg >/dev/null 2>&1
-    mv /linux-vs-windows.jpg /usr/share/backgrounds/mate/desktop/linux-vs-windows.jpg
-    curl -O $GITHUB/main/conf/MateConfig >/dev/null 2>&1
+    print_info "Downloading MATE desktop configuration..."
+    if curl -O $GITHUB/main/conf/linux-vs-windows.jpg >/dev/null 2>&1; then
+        if mv /linux-vs-windows.jpg /usr/share/backgrounds/mate/desktop/linux-vs-windows.jpg; then
+            print_info "✓ Desktop background downloaded and installed"
+        else
+            log_error "Failed to install desktop background"
+        fi
+    else
+        log_error "Failed to download desktop background"
+    fi
+    
+    if curl -O $GITHUB/main/conf/MateConfig >/dev/null 2>&1; then
+        print_info "✓ MATE configuration downloaded"
+    else
+        log_error "Failed to download MATE configuration"
+    fi
 }
 
 function dev_Setup {
@@ -114,8 +127,16 @@ function dev_Setup {
         print_info "Setting up a coding env... This may take awhile"
         echo "-------------------------------------------------------"
         users=$(ls /home)
-        curl -O $GITHUB/main/vimrc_bundle_conf >/dev/null 2>&1
-        mv vimrc_bundle_conf /home/$users/.vimrc
+        print_info "Downloading vim configuration..."
+        if curl -O $GITHUB/main/vimrc_bundle_conf >/dev/null 2>&1; then
+            if mv vimrc_bundle_conf /home/$users/.vimrc; then
+                print_info "✓ vim configuration installed"
+            else
+                log_error "Failed to install vim configuration"
+            fi
+        else
+            log_error "Failed to download vim configuration"
+        fi
         pacman -S jdk-openjdk python-pip rustup go nodejs npm python3 code neovim gimp audacity wireshark-qt vlc btop virtualbox postman docker pycharm-community-edition intellij-idea-community-edition --noconfirm >/dev/null 2>&1 
     else
         log_warning "Do you know where the term Script Kiddie comes from?"
@@ -179,11 +200,18 @@ function vid_Driver {
                 #rm -rf /tmp/$driver
             fi
 
-            curl -O $GITHUB/Main/conf/nvidia.hook 2>/dev/null
-            curl -O $GITHUB/Main/conf/20-nvidia.conf 2>/dev/null
-            mkdir -p /etc/pacman.d/hooks/ /etc/X11/xorg.conf.d/
-            mv /nvidia.hook /etc/pacman.d/hooks/
-            mv /20-nvidia.conf /etc/X11/xorg.conf.d/
+            print_info "Downloading NVIDIA configuration files..."
+            if curl -O $GITHUB/main/conf/nvidia.hook 2>/dev/null && curl -O $GITHUB/main/conf/20-nvidia.conf 2>/dev/null; then
+                print_info "✓ NVIDIA configuration files downloaded successfully"
+                mkdir -p /etc/pacman.d/hooks/ /etc/X11/xorg.conf.d/
+                if mv /nvidia.hook /etc/pacman.d/hooks/ && mv /20-nvidia.conf /etc/X11/xorg.conf.d/; then
+                    print_info "✓ NVIDIA configuration files installed"
+                else
+                    log_error "Failed to move NVIDIA configuration files"
+                fi
+            else
+                log_error "Failed to download NVIDIA configuration files"
+            fi
             echo "blacklist nouveau" > /etc/modprobe.d/blacklist-nvidia-nouveau.conf
             echo "-------------------------------------------------------------"
             print_info "Attempting to force composition..."
@@ -211,14 +239,42 @@ function user_Info {
     echo "-------------------------------------"
     print_info "Setting $username password..."
     passwd $username || log_error "Failed to set password for user $username."
-    curl -O $GITHUB/main/conf/fish.config >/dev/null 2>&1
-    mkdir -p /home/$username/.config/fish
-    mv /fish.config /home/$username/.config/fish/config.fish
+    print_info "Downloading Fish shell configuration..."
+    if curl -O $GITHUB/main/conf/fish.config >/dev/null 2>&1; then
+        print_info "✓ Fish configuration downloaded successfully"
+        mkdir -p /home/$username/.config/fish
+        if mv /fish.config /home/$username/.config/fish/config.fish; then
+            print_info "✓ Fish configuration installed"
+        else
+            log_error "Failed to move Fish configuration file"
+        fi
+    else
+        log_error "Failed to download Fish configuration"
+        log_warning "Fish will use default configuration"
+    fi
     chown $username -R /home/$username/.config/
     mkdir -p /home/$username/AUR
     chown -R $username /home/$username/AUR
-    curl -O $GITHUB/main/conf/smb.conf >/dev/null 2>&1
-    mv /smb.conf /etc/samba/smb.conf
+    print_info "Downloading Samba configuration..."
+    if curl -O $GITHUB/main/conf/smb.conf >/dev/null 2>&1; then
+        print_info "✓ Samba configuration downloaded successfully"
+        
+        # Ensure /etc/samba directory exists
+        if [[ ! -d "/etc/samba" ]]; then
+            print_info "Creating /etc/samba directory..."
+            mkdir -p /etc/samba
+        fi
+        
+        # Move the configuration file
+        if mv /smb.conf /etc/samba/smb.conf; then
+            print_info "✓ Samba configuration installed to /etc/samba/smb.conf"
+        else
+            log_error "Failed to move smb.conf to /etc/samba/"
+        fi
+    else
+        log_error "Failed to download smb.conf from GitHub"
+        log_warning "Samba will use default configuration"
+    fi
 }
 
 function booter {
