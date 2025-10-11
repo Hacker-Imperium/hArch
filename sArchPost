@@ -257,11 +257,24 @@ function raid_Setup {
     # Intel RST/RSTe support for C620 series
     print_info "Loading Intel RST/RSTe modules..."
     modprobe ahci
-    modprobe intel_ahci
     
-    # Add modules to mkinitcpio
+    # Check if intel_ahci module exists before loading
+    if modinfo intel_ahci >/dev/null 2>&1; then
+        print_info "Loading intel_ahci module..."
+        modprobe intel_ahci
+        intel_ahci_available=true
+    else
+        log_warning "intel_ahci module not found - using generic ahci"
+        intel_ahci_available=false
+    fi
+    
+    # Add modules to mkinitcpio based on availability
     print_info "Adding RAID modules to initramfs..."
-    sed -i 's/MODULES=()/MODULES=(md_mod raid1 raid0 raid10 raid456 linear ahci intel_ahci)/' /etc/mkinitcpio.conf
+    if [[ "$intel_ahci_available" == "true" ]]; then
+        sed -i 's/MODULES=()/MODULES=(md_mod raid1 raid0 raid10 raid456 linear ahci intel_ahci)/' /etc/mkinitcpio.conf
+    else
+        sed -i 's/MODULES=()/MODULES=(md_mod raid1 raid0 raid10 raid456 linear ahci)/' /etc/mkinitcpio.conf
+    fi
     
     # Configure mdadm
     print_info "Configuring mdadm..."
@@ -275,7 +288,14 @@ EOF
     # Enable mdadm monitoring
     systemctl enable mdmonitor >/dev/null 2>&1
     
+    # Install additional Intel RAID tools if available
+    print_info "Installing Intel RAID management tools..."
+    pacman -S mdadm-utils --noconfirm >/dev/null 2>&1 || log_warning "mdadm-utils not available"
+    
     print_info "✓ Intel C620 RAID support configured"
+    if [[ "$intel_ahci_available" == "false" ]]; then
+        log_warning "Note: intel_ahci module not available - using generic ahci driver"
+    fi
     print_info "Note: Configure your RAID arrays using mdadm after installation"
 }
 
@@ -287,7 +307,9 @@ function user_Info {
     echo "-------------------------------"
     print_info "Creating server admin account..."
     read -p "Enter Admin Username: " username
-    useradd -mg users -G wheel,power,storage,docker -s /usr/bin/bash $username
+    
+    # Create user without docker group initially (will be added later if Docker is installed)
+    useradd -mg users -G wheel,power,storage -s /usr/bin/bash $username
     echo '%wheel ALL=(ALL:ALL) ALL' >> /etc/sudoers.d/wheel_group
     chmod 440 /etc/sudoers.d/wheel_group
     echo "-------------------------------------"
@@ -421,14 +443,22 @@ function docker_Setup {
     echo "---------------------------------------------------------------"
     read -p 'Do you want to INSTALL Docker for containerization? [Y/n]: ' docker
     if [[ $docker == 'y' || $docker == 'Y' || $docker == '' ]]; then
-        print_info "Configuring Docker..."
+        print_info "Installing Docker..."
         echo "------------------------------------"
+        
+        # Install Docker if not already installed
+        pacman -S docker docker-compose --noconfirm >/dev/null 2>&1
         
         # Enable Docker service
         systemctl enable docker >/dev/null 2>&1
         
-        # Add user to docker group
-        usermod -aG docker $username >/dev/null 2>&1
+        # Add user to docker group (now that Docker is installed)
+        if getent group docker >/dev/null 2>&1; then
+            usermod -aG docker $username >/dev/null 2>&1
+            print_info "User $username added to docker group"
+        else
+            log_warning "Docker group not found - user not added to docker group"
+        fi
         
         # Configure Docker daemon
         mkdir -p /etc/docker
@@ -446,7 +476,6 @@ EOF
         print_info "Docker configured successfully!"
         echo "------------------------------------"
         print_info "Docker service will start on boot"
-        print_info "User $username added to docker group"
         log_success "Docker ready for containerization!"
     else
         log_warning "Skipping Docker installation..."

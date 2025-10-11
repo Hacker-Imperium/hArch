@@ -1,4 +1,4 @@
-# hArch {Hackers Arch} 
+# hArch {Hackers Arch} / sArch {Servers Arch}
 Version 1.0.5 
 
 ![hArch](https://github.com/Binary-Brawler/hArch/assets/132982785/8000c3cd-1d2e-4377-91f3-2fec7cb800c2)
