@@ -312,11 +312,11 @@ function installer {
     sleep 2
     # Server-focused base installation with additional server packages
     pacstrap /mnt base base-devel linux linux-firmware linux-headers dkms \
-        openssh iptables-nft ufw fail2ban rsync htop iotop nethogs \
+        openssh iptables-nft ufw fail2ban htop iotop nethogs \
         lsof net-tools bind-tools curl wget git vim nano \
-        systemd-resolvconf chrony logrotate \
+        systemd-resolvconf chrony \
         mdadm lvm2 smartmontools hdparm \
-        intel-ucode microcode_ctl >/dev/null 2>&1
+        intel-ucode >/dev/null 2>&1
     sleep 2
     genfstab -U /mnt >> /mnt/etc/fstab
 }
