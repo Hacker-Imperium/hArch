@@ -69,6 +69,39 @@ function greeter {
     echo "-------------------------------------------------------------------------------------------------"
 }
 
+function collect_Inputs {
+    slear
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Collecting all required inputs at the beginning..."
+    echo "-------------------------------------------------------------------------------------------------"
+    echo ${NEWLINE}
+    
+    # Display available drives
+    print_info "Available drives:"
+    lsblk
+    echo ${NEWLINE}
+    
+    # Ask about manual partitioning
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Partitioning Options:"
+    print_info "If you want to manually partition, you may do so. Just type exit after mounting /mnt"
+    print_info "Otherwise, automated partition will create the standard BIOS/UEFI partitions"
+    echo "-------------------------------------------------------------------------------------------------"
+    read -p "Manually partition [y/N]: " MANUAL_PARTITION
+    
+    # If not manual, get the drive
+    if [[ $MANUAL_PARTITION != 'y' && $MANUAL_PARTITION != 'Y' ]]; then
+        echo "-------------------------------------------------------------------------------------------------"
+        read -p "Enter Drive to prepare (e.g., /dev/sda): " DRIVE
+        echo "-------------------------------------------------------------------------------------------------"
+    else
+        DRIVE=""
+    fi
+    
+    print_info "Inputs collected."
+    sleep 2
+}
+
 function check_Net {
     echo "---------------------------------------"
     print_info "Checking Internet Connection..."
@@ -343,35 +376,34 @@ function last_Min_Setup {
 
 main() {
     greeter
+    collect_Inputs
+    
     slear
     check_Net || { log_error "Check your Internet"; exit 1; }
     slear
-    echo "----------------------------"
-    print_info "Gathering drives..."
-    echo ${NEWLINE}
-    lsblk #TODO: Add something more robust
-    echo ${NEWLINE}
-    print_info "Time to select the drive you want too partition..."
-    print_info "If you want to manually partition you may, just type exit after mounting /mnt"
-    print_info "Otherwise, automated partition will create the standard BIOS/UEFI partitions"
-    echo ${NEWLINE}
-    echo "--------------------------------------"
-    read -p "Manually partition [y/N]: " manual
 
-    if [[ $manual == 'y' || $manual == 'Y' ]]; then
+    if [[ $MANUAL_PARTITION == 'y' || $MANUAL_PARTITION == 'Y' ]]; then
         echo "--------------------------------------"
-        cfdisk "$drive"
+        if [[ -n "$DRIVE" ]]; then
+            cfdisk "$DRIVE"
+        else
+            print_info "Please enter the drive to partition manually:"
+            read -p "Enter Drive (e.g., /dev/sda): " DRIVE
+            cfdisk "$DRIVE"
+        fi
         print_info "Entering BASH shell. Create filesystem and mount /mnt. Type exit once finished."
         echo "-----------------------------------------------------------------------------------------"
         bash
     else
-        echo "----------------------------------------------"
-        read -p "Enter Drive to prepare (e.g., /dev/sda): " drive
+        if [[ -z "$DRIVE" ]]; then
+            log_error "Drive not specified. Exiting."
+            exit 1
+        fi
         echo "----------------------------"
-        print_info "Modifying $drive..."
+        print_info "Modifying $DRIVE..."
         sleep 3
 
-        partition_Drive "$drive"
+        partition_Drive "$DRIVE"
     fi
 
     installer || { log_error "Base system installation failed. Exiting."; exit 1; }

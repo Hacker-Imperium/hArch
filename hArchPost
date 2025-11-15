@@ -68,6 +68,65 @@ function slear {
     clear
 }
 
+function collect_Inputs {
+    slear
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Collecting all required inputs at the beginning..."
+    echo "-------------------------------------------------------------------------------------------------"
+    echo ${NEWLINE}
+    
+    # Hostname
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "System Configuration:"
+    read -p "Enter Hostname: " HOSTNAME
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # Coder setup
+    echo "-------------------------------------------------------------------------------------------------"
+    read -p "Can you code? [Y/n]: " CODER
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # User account
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "User Account Setup:"
+    read -p "Enter Username: " USERNAME
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # Passwords
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Password Configuration:"
+    echo "You will be prompted for passwords. They will be set non-interactively."
+    read -sp "Enter ROOT password: " ROOT_PASSWORD
+    echo ""
+    read -sp "Enter password for $USERNAME: " USER_PASSWORD
+    echo ""
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # Bootloader drive
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Bootloader Configuration:"
+    drives=$(lsblk -f)
+    echo -e "$drives${NEWLINE}"
+    echo -e "[${YELLOW}SYNTAX${RESET}] If BIOS, attach bootloader to disk: ex- /dev/sda"
+    echo -e "[${YELLOW}SYNTAX${RESET}] If UEFI, attach bootloader to partition: ex- /dev/nvme0n1p1"
+    echo "-------------------------------------------------------------------------------------------------"
+    read -p "Enter Drive/Partition to install Bootloader [Example: /dev/nvme0n1p1]: " BOOTLOADER_DRIVE
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # Hacking tools
+    echo "-------------------------------------------------------------------------------------------------"
+    read -p 'Do you want to INSTALL the Master Hacking Toolset? [y/N]: ' HACKING_TOOLS
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # Docker lab
+    echo "-------------------------------------------------------------------------------------------------"
+    read -p 'Do you want to INSTALL the Docker Home Lab? [y/N]: ' DOCKER_LAB
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    print_info "All inputs collected (stored in memory only)."
+    sleep 2
+}
+
 function p_Download {
     slear
     echo "--------------------------------"
@@ -85,9 +144,8 @@ function p_Download {
 
 function installer {
     echo "-------------------------------------------------------"
-    print_info "What would you like your system name set too..."
-    read -p "Enter Hostname: " hostname
-    echo $hostname > /etc/hostname
+    print_info "Setting hostname to $HOSTNAME..."
+    echo $HOSTNAME > /etc/hostname
     slear
     echo  "------------------------------------"
     print_info "Installing useful packages..." 
@@ -121,15 +179,13 @@ function desktop_Env {
 
 function dev_Setup {
     echo "--------------------------------"
-    read -p "Can you code? [Y/n]: " coder
-    if [[ $coder == 'y' || $coder == 'Y' ]]; then
+    if [[ $CODER == 'y' || $CODER == 'Y' || -z "$CODER" ]]; then
         echo "-------------------------------------------------------"
         print_info "Setting up a coding env... This may take awhile"
         echo "-------------------------------------------------------"
-        users=$(ls /home)
         print_info "Downloading vim configuration..."
         if curl -O $GITHUB/main/vimrc_bundle_conf >/dev/null 2>&1; then
-            if mv vimrc_bundle_conf /home/$users/.vimrc; then
+            if mv vimrc_bundle_conf /home/$USERNAME/.vimrc; then
                 print_info "✓ vim configuration installed"
             else
                 log_error "Failed to install vim configuration"
@@ -150,7 +206,7 @@ function vid_Driver {
     print_info "Gathering Graphics info..."
     sleep 2
     str=$(lspci -vmm | grep VGA -A6)
-    user=$(getent passwd | awk -F: '$6 ~ /^\/home/ {print $1}')
+    user=$USERNAME
     
     # Define driver packages
     AMD='AMD'
@@ -228,22 +284,21 @@ function vid_Driver {
 function user_Info {
     echo "--------------------------------"
     print_info "Setting Root password..."
-    passwd || log_error "Failed to set password for ROOT"
+    echo "root:$ROOT_PASSWORD" | chpasswd || log_error "Failed to set password for ROOT"
     slear
     echo "-------------------------------"
-    print_info "Creating user account..."
-    read -p "Enter Username: " username
-    useradd -mg users -G wheel,power,storage -s /usr/bin/fish $username
+    print_info "Creating user account: $USERNAME..."
+    useradd -mg users -G wheel,power,storage -s /usr/bin/fish $USERNAME
     echo '%wheel ALL=(ALL:ALL) ALL' >> /etc/sudoers.d/wheel_group
     chmod 440 /etc/sudoers.d/wheel_group
     echo "-------------------------------------"
-    print_info "Setting $username password..."
-    passwd $username || log_error "Failed to set password for user $username."
+    print_info "Setting $USERNAME password..."
+    echo "$USERNAME:$USER_PASSWORD" | chpasswd || log_error "Failed to set password for user $USERNAME."
     print_info "Downloading Fish shell configuration..."
     if curl -O $GITHUB/main/conf/fish.config >/dev/null 2>&1; then
         print_info "✓ Fish configuration downloaded successfully"
-        mkdir -p /home/$username/.config/fish
-        if mv /fish.config /home/$username/.config/fish/config.fish; then
+        mkdir -p /home/$USERNAME/.config/fish
+        if mv /fish.config /home/$USERNAME/.config/fish/config.fish; then
             print_info "✓ Fish configuration installed"
         else
             log_error "Failed to move Fish configuration file"
@@ -252,9 +307,9 @@ function user_Info {
         log_error "Failed to download Fish configuration"
         log_warning "Fish will use default configuration"
     fi
-    chown $username -R /home/$username/.config/
-    mkdir -p /home/$username/AUR
-    chown -R $username /home/$username/AUR
+    chown $USERNAME -R /home/$USERNAME/.config/
+    mkdir -p /home/$USERNAME/AUR
+    chown -R $USERNAME /home/$USERNAME/AUR
     print_info "Downloading Samba configuration..."
     if curl -O $GITHUB/main/conf/smb.conf >/dev/null 2>&1; then
         print_info "✓ Samba configuration downloaded successfully"
@@ -279,13 +334,7 @@ function user_Info {
 
 function booter {
     echo "-----------------------------"
-    print_info "Setting Bootloader..."
-    drives=$(lsblk -f)
-    echo -e "$drives${NEWLINE}"
-    echo -e "[${YELLOW}SYNTAX${RESET}] If BIOS, attach bootloader to disk: ex- /dev/sda"
-    echo -e "[${YELLOW}SYNTAX${RESET}] If UEFI, attach bootloader to partition: ex- /dev/nvme0n1p1"
-    echo "-----------------------------------------------------------------------------------------------------"
-    read -p "Enter Drive/Partition to install Bootloader [Example: /dev/nvme0n1p1]: " drive
+    print_info "Setting Bootloader on $BOOTLOADER_DRIVE..."
     slear
     
     # Use firmware type detected by hArch script
@@ -324,7 +373,7 @@ function booter {
         echo "-------------------------------------"
         print_info "Installing BIOS Bootloader..."
         pacman -S grub --noconfirm >/dev/null
-        grub-install --target=i386-pc $drive --recheck
+        grub-install --target=i386-pc $BOOTLOADER_DRIVE --recheck
         grub-mkconfig -o /boot/grub/grub.cfg
         mkinitcpio -p linux
     fi
@@ -344,8 +393,7 @@ function black_Arch {
 
 function hack_Tools {
     echo "---------------------------------------------------------------"
-    read -p 'Do you want to INSTALL the Master Hacking Toolset? [y/N]: ' ht
-    if [[ $ht == 'y' || $ht == 'Y' ]]; then
+    if [[ $HACKING_TOOLS == 'y' || $HACKING_TOOLS == 'Y' ]]; then
         print_info "Installing Master Hacking Toolset... Go grab a drink!"
         curl -O $GITHUB/main/Tools/Master >/dev/null 2>&1
         pacman -S - < /Master --noconfirm >/dev/null 2>&1
@@ -357,8 +405,7 @@ function hack_Tools {
 
 function docker_Lab {
     echo "---------------------------------------------------------------"
-    read -p 'Do you want to INSTALL the Docker Home Lab? [y/N]: ' dl
-    if [[ $dl == 'y' || $dl == 'Y' ]]; then
+    if [[ $DOCKER_LAB == 'y' || $DOCKER_LAB == 'Y' ]]; then
         print_info "Installing Docker Home Lab..."
         echo "------------------------------------"
         
@@ -371,30 +418,30 @@ function docker_Lab {
         systemctl start docker >/dev/null 2>&1
         
         # Add user to docker group
-        usermod -aG docker $username >/dev/null 2>&1
+        usermod -aG docker $USERNAME >/dev/null 2>&1
         
         # Create Docker lab directory
-        mkdir -p /home/$username/docker-lab
-        cd /home/$username/docker-lab
+        mkdir -p /home/$USERNAME/docker-lab
+        cd /home/$USERNAME/docker-lab
         
         # Copy Docker files from /Docker directory
         print_info "Copying Docker lab files..."
-        cp /Docker/Dockerfile /home/$username/docker-lab/
-        cp /Docker/Docker-compose.yaml /home/$username/docker-lab/
-        cp /Docker/start-lab.sh /home/$username/docker-lab/
-        cp /Docker/README.md /home/$username/docker-lab/
-        cp /Docker/.dockerignore /home/$username/docker-lab/
+        cp /Docker/Dockerfile /home/$USERNAME/docker-lab/
+        cp /Docker/Docker-compose.yaml /home/$USERNAME/docker-lab/
+        cp /Docker/start-lab.sh /home/$USERNAME/docker-lab/
+        cp /Docker/README.md /home/$USERNAME/docker-lab/
+        cp /Docker/.dockerignore /home/$USERNAME/docker-lab/
         
         # Make startup script executable
         chmod +x start-lab.sh
         
         # Set ownership
-        chown -R $username:$username /home/$username/docker-lab
+        chown -R $USERNAME:$USERNAME /home/$USERNAME/docker-lab
         
         print_info "Docker lab installed successfully!"
         echo "------------------------------------"
-        print_info "Docker lab location: /home/$username/docker-lab"
-        print_info "To start the lab: cd /home/$username/docker-lab && ./start-lab.sh"
+        print_info "Docker lab location: /home/$USERNAME/docker-lab"
+        print_info "To start the lab: cd /home/$USERNAME/docker-lab && ./start-lab.sh"
         print_info "Available vulnerable apps:"
         echo "  - DVWA: http://localhost:8080 (admin/password)"
         echo "  - Juice Shop: http://localhost:3000 (admin/admin123)"
@@ -416,7 +463,7 @@ function complete {
     echo "-------------------------------------------------------------------------------------------------"
     log_success "hArch has been successfully installed on your system"
     print_info "-------------------------------------------------------"
-    print_info "Hack the Universe $username" x_X
+    print_info "Hack the Universe $USERNAME" x_X
     print_info "-------------------------------------------------------"
     log_warning "A reboot should now take place"
     print_info "Run the following commands to reboot properly:"
@@ -425,6 +472,8 @@ function complete {
     log_warning "3: reboot"
     rm /hArchPost
     rm -rf /Docker
+    # Clear sensitive variables from memory
+    unset ROOT_PASSWORD USER_PASSWORD HOSTNAME USERNAME CODER BOOTLOADER_DRIVE HACKING_TOOLS DOCKER_LAB
     exit
 }
 
@@ -444,5 +493,8 @@ function and_In_The_Script_Bind_Them {
     # Too easy ;)
     echo "$encoded" | base64 --decode
 }
+
+# Initialize: Collect inputs (stored in memory only)
+collect_Inputs
 
 one_Func_To_Rule_Them_All
