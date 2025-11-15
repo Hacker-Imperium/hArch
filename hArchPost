@@ -127,7 +127,21 @@ function installer {
     slear
     echo  "------------------------------------"
     print_info "Installing useful packages..." 
-    pacman -S dkms linux-headers mlocate git cmake neofetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf remmina dconf-editor fish noto-fonts ttf-ubuntu-font-family ttf-dejavu ttf-freefont ttf-liberation ttf-droid ttf-roboto terminus-font rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm >/dev/null 2>&1
+    pacman -S dkms linux-headers mlocate git cmake neofetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf fish remmina dconf-editor fish noto-fonts ttf-ubuntu-font-family ttf-dejavu ttf-freefont ttf-liberation ttf-droid ttf-roboto terminus-font rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm >/dev/null 2>&1
+    
+    # Verify fish is installed
+    if ! command -v fish &>/dev/null; then
+        log_warning "Fish shell not found after package installation. Installing explicitly..."
+        pacman -S fish --noconfirm >/dev/null 2>&1
+        if ! command -v fish &>/dev/null; then
+            log_error "Failed to install fish shell. User will be created with default shell."
+        else
+            print_info "✓ Fish shell installed successfully"
+        fi
+    else
+        print_info "✓ Fish shell verified"
+    fi
+    
     hwclock --systohc
 }
 
@@ -267,30 +281,46 @@ function user_Info {
     slear
     echo "-------------------------------"
     print_info "Creating user account: $USERNAME..."
-    useradd -mg users -G wheel,power,storage -s /usr/bin/fish $USERNAME
+    
+    # Determine shell - use fish if available, otherwise use bash
+    local user_shell="/bin/bash"
+    if command -v fish &>/dev/null; then
+        user_shell="/usr/bin/fish"
+        print_info "Using Fish shell for user"
+    else
+        log_warning "Fish shell not available, using bash as default shell"
+    fi
+    
+    useradd -mg users -G wheel,power,storage -s "$user_shell" $USERNAME
     echo '%wheel ALL=(ALL:ALL) ALL' >> /etc/sudoers.d/wheel_group
     chmod 440 /etc/sudoers.d/wheel_group
     echo "-------------------------------------"
     print_info "Setting $USERNAME password..."
     echo "$USERNAME:$USER_PASSWORD" | chpasswd || log_error "Failed to set password for user $USERNAME."
-    print_info "Downloading Fish shell configuration..."
-    if curl -O $GITHUB/main/conf/fish.config >/dev/null 2>&1; then
-        print_info "✓ Fish configuration downloaded successfully"
-        mkdir -p /home/$USERNAME/.config/fish
-        if mv /fish.config /home/$USERNAME/.config/fish/config.fish; then
-            print_info "✓ Fish configuration installed"
+    
+    # Only download fish config if fish is installed
+    if command -v fish &>/dev/null; then
+        print_info "Downloading Fish shell configuration..."
+        if curl -O $GITHUB/main/conf/fish.config >/dev/null 2>&1; then
+            print_info "✓ Fish configuration downloaded successfully"
+            mkdir -p /home/$USERNAME/.config/fish
+            if mv /fish.config /home/$USERNAME/.config/fish/config.fish; then
+                print_info "✓ Fish configuration installed"
+            else
+                log_error "Failed to move Fish configuration file"
+            fi
         else
-            log_error "Failed to move Fish configuration file"
+            log_error "Failed to download Fish configuration"
+            log_warning "Fish will use default configuration"
         fi
     else
-        log_error "Failed to download Fish configuration"
-        log_warning "Fish will use default configuration"
+        log_warning "Skipping Fish configuration (Fish shell not installed)"
     fi
     chown $USERNAME -R /home/$USERNAME/.config/
     mkdir -p /home/$USERNAME/AUR
     chown -R $USERNAME /home/$USERNAME/AUR
     print_info "Downloading Samba configuration..."
-    if curl -O $GITHUB/main/conf/smb.conf >/dev/null 2>&1; then
+    if curl -O $GITHUB/refs/heads/main/smb.conf >/dev/null 2>&1; then
         print_info "✓ Samba configuration downloaded successfully"
         
         # Ensure /etc/samba directory exists
