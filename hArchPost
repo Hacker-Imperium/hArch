@@ -476,7 +476,7 @@ function docker_Lab {
 function complete {
     slear
     echo "-------------------------------------------------------------------------------------------------"
-    neofetch
+    fastfetch
     echo "-------------------------------------------------------------------------------------------------"
     log_success "hArch has been successfully installed on your system"
     print_info "-------------------------------------------------------"
