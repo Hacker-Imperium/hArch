@@ -122,13 +122,46 @@ function p_Download {
 
 function installer {
     echo "-------------------------------------------------------"
+    
+    # Check if HOSTNAME is set
+    if [[ -z "$HOSTNAME" ]]; then
+        log_error "HOSTNAME is not set! Cannot continue."
+        log_error "Debug: HOSTNAME variable is empty"
+        return 1
+    fi
+    
     print_info "Setting hostname to $HOSTNAME..."
-    echo $HOSTNAME > /etc/hostname
+    echo "$HOSTNAME" > /etc/hostname
+    
+    if [[ $? -ne 0 ]]; then
+        log_error "Failed to set hostname"
+        return 1
+    fi
+    
+    # Verify hostname was written
+    local written_hostname=$(cat /etc/hostname)
+    if [[ "$written_hostname" != "$HOSTNAME" ]]; then
+        log_error "Hostname verification failed! Expected: $HOSTNAME, Got: $written_hostname"
+        return 1
+    fi
+    
+    print_info "✓ Hostname set successfully"
     slear
     echo  "------------------------------------"
     print_info "Installing useful packages..." 
+    print_info "This may take several minutes, please wait..."
+    echo ""
+    
     pacman -S dkms linux-headers mlocate git cmake fastfetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf fish remmina dconf-editor fish noto-fonts ttf-ubuntu-font-family ttf-dejavu ttf-freefont ttf-liberation ttf-droid ttf-roboto terminus-font rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm
     
+    local pacman_exit=$?
+    if [[ $pacman_exit -ne 0 ]]; then
+        log_error "Package installation failed with exit code: $pacman_exit"
+        log_error "Please check the output above for errors"
+        return 1
+    fi
+    
+    print_info "✓ Packages installed successfully"
     hwclock --systohc
 }
 
