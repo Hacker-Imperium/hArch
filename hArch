@@ -102,6 +102,17 @@ function collect_Inputs {
     sleep 2
 }
 
+function update_Keyring {
+    echo "---------------------------------------"
+    print_info "Updating archlinux-keyring (handling old ISO trust issues)..."
+    pacman -Sy archlinux-keyring --noconfirm >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        print_info "✓ Keyring updated successfully"
+    else
+        log_warning "Keyring update encountered issues, but continuing..."
+    fi
+}
+
 function check_Net {
     echo "---------------------------------------"
     print_info "Checking Internet Connection..."
@@ -380,6 +391,8 @@ main() {
     
     slear
     check_Net || { log_error "Check your Internet"; exit 1; }
+    slear
+    update_Keyring
     slear
 
     if [[ $MANUAL_PARTITION == 'y' || $MANUAL_PARTITION == 'Y' ]]; then
