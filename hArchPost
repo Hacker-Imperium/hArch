@@ -408,15 +408,91 @@ function black_Arch {
 
 function hack_Tools {
     echo "---------------------------------------------------------------"
-    read -p 'Do you want to INSTALL the Master Hacking Toolset? [y/N]: ' HACKING_TOOLS
-    if [[ $HACKING_TOOLS == 'y' || $HACKING_TOOLS == 'Y' ]]; then
-        print_info "Installing Master Hacking Toolset... Go grab a drink!"
-        curl -O $GITHUB/main/Tools/Master >/dev/null 2>&1
-        pacman -S - < /Master --noconfirm >/dev/null 2>&1
-        rm /Master
-    else
-        log_warning "Skipping..."
+    print_info "Hacking Tools Installation"
+    echo "---------------------------------------------------------------"
+    echo ""
+    echo "Select which tool categories you want to install:"
+    echo ""
+    echo "  [1] Cracking      - Password cracking tools (john, hashcat, hydra, etc.)"
+    echo "  [2] Network       - Network and web tools (nmap, burpsuite, metasploit, etc.)"
+    echo "  [3] Forensics     - Forensics tools (binwalk, steghide, radare2, etc.)"
+    echo "  [4] Pwn           - Exploitation and reverse engineering (ghidra, pwntools, etc.)"
+    echo "  [5] Wireless      - Wireless security tools (aircrack-ng, kismet, reaver, etc.)"
+    echo "  [6] OSINT         - Open source intelligence (theharvester, recon-ng, maltego, etc.)"
+    echo "  [7] Mobile        - Mobile security tools (apktool, frida, drozer, etc.)"
+    echo "  [8] Malware       - Malware analysis tools (volatility3, yara, cuckoo, etc.)"
+    echo "  [9] Master        - All tools combined (everything above)"
+    echo ""
+    echo "You can select multiple categories by entering numbers separated by commas or spaces"
+    echo "Example: 1,3,4  or  1 3 4  or  2,5,7"
+    echo ""
+    echo "---------------------------------------------------------------"
+    read -p "Enter your selection (or 'n' to skip): " tool_selection
+    
+    # Check if user wants to skip
+    if [[ "$tool_selection" == 'n' || "$tool_selection" == 'N' || -z "$tool_selection" ]]; then
+        log_warning "Skipping tool installation..."
+        return
     fi
+    
+    # Normalize input: remove spaces, convert to array
+    tool_selection=$(echo "$tool_selection" | tr -d ' ' | tr ',' ' ')
+    read -a selections <<< "$tool_selection"
+    
+    # Define tool categories
+    declare -A tool_categories=(
+        ["1"]="Cracking"
+        ["2"]="Network"
+        ["3"]="Forensics"
+        ["4"]="pwn"
+        ["5"]="Wireless"
+        ["6"]="OSINT"
+        ["7"]="Mobile"
+        ["8"]="Malware"
+        ["9"]="Master"
+    )
+    
+    # Track what we're installing
+    local tools_to_install=()
+    local install_count=0
+    
+    # Process selections
+    for selection in "${selections[@]}"; do
+        if [[ -n "${tool_categories[$selection]}" ]]; then
+            tools_to_install+=("${tool_categories[$selection]}")
+            ((install_count++))
+        else
+            log_warning "Invalid selection: $selection (skipping)"
+        fi
+    done
+    
+    if [[ $install_count -eq 0 ]]; then
+        log_warning "No valid selections made. Skipping tool installation..."
+        return
+    fi
+    
+    # Install selected tools
+    print_info "Installing selected tool categories..."
+    echo "---------------------------------------------------------------"
+    
+    for tool_category in "${tools_to_install[@]}"; do
+        print_info "Installing $tool_category tools..."
+        if curl -O "$GITHUB/main/Tools/$tool_category" >/dev/null 2>&1; then
+            if [[ -f "/$tool_category" ]]; then
+                pacman -S - < "/$tool_category" --noconfirm
+                rm "/$tool_category"
+                print_info "✓ $tool_category tools installed"
+            else
+                log_error "Failed to download $tool_category tool list"
+            fi
+        else
+            log_error "Failed to download $tool_category from GitHub"
+        fi
+        echo ""
+    done
+    
+    log_success "Tool installation completed!"
+    echo "---------------------------------------------------------------"
 }
 
 function docker_Lab {

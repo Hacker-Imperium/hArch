@@ -9,7 +9,7 @@ Version 1.0.5
 
 A simplistic Arch build – your gateway to a streamlined Arch Linux experience designed for speed and efficiency. Whether you're a seasoned security researcher, a bug hunter, or simply a Linux enthusiast looking to breathe new life into aging hardware, hArch guarantees a swift and seamless journey – because your hardware's age shouldn't limit your potential.
 
-Geared towards those delving into penetration testing, reverse engineering, or eager to dive into the Linux ecosystem, hArch offers a curated selection of essential tools, downloaded during installation or at your convenience. And with its bash script foundation, customization is not just encouraged, but celebrated. Make hArch truly yours by tweaking to your heart's content.
+Geared towards those delving into penetration testing, reverse engineering, or eager to dive into the Linux ecosystem, hArch offers a curated selection of essential tools, downloaded during installation or at your convenience. With its bash script foundation, customization is not just encouraged, but celebrated. Make hArch truly yours by tweaking to your heart's content.
 
 Have an old laptop collecting dust? Throw hArch on it. By Default, Networking is not Enabled. 
 
@@ -23,10 +23,10 @@ Have an old laptop collecting dust? Throw hArch on it. By Default, Networking is
 
                            -- FISH Functions --
 
-      firstRun                                 #Run this on first run
-      startUp                                  #Starts Ethernet & Updates
-      installHaskell                           #Install Haskell via GHCUP
-      newHasky                                 #Creates simple Haskell project
+      firstRun                                 #Run this on first run (Sets up a few things off the rip)
+      startUp                                  #Starts Ethernet & Updates (Internet off, until thy ready)
+      installHaskell                           #Install Haskell via GHCUP (Haskell Lovers ;)
+      newHasky                                 #Creates simple Haskell project 
       newPy                                    #Creates simple Python project
    
 
@@ -46,7 +46,7 @@ ________________________________________________________________________________
 
 To install, boot into Arch live ISO and:
   
-    1. curl -O https://raw.githubusercontent.com/Binary-Brawler/hArch/main/hArch
+    1. curl -O https://raw.githubusercontent.com/Binary-Brawler/hArch/refs/heads/main/hArch
     2. chmod +x hArch
     3. ./hArch
     * Some systems show a bad meterpreter if so run: sed -i -e 's/\r$//' hArch 
