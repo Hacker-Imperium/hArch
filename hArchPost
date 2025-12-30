@@ -122,46 +122,68 @@ function p_Download {
 
 function installer {
     echo "-------------------------------------------------------"
-    
-    # Check if HOSTNAME is set
-    if [[ -z "$HOSTNAME" ]]; then
-        log_error "HOSTNAME is not set! Cannot continue."
-        log_error "Debug: HOSTNAME variable is empty"
-        return 1
-    fi
-    
     print_info "Setting hostname to $HOSTNAME..."
     echo "$HOSTNAME" > /etc/hostname
-    
-    if [[ $? -ne 0 ]]; then
-        log_error "Failed to set hostname"
-        return 1
-    fi
-    
-    # Verify hostname was written
-    local written_hostname=$(cat /etc/hostname)
-    if [[ "$written_hostname" != "$HOSTNAME" ]]; then
-        log_error "Hostname verification failed! Expected: $HOSTNAME, Got: $written_hostname"
-        return 1
-    fi
-    
-    print_info "✓ Hostname set successfully"
     slear
-    echo  "------------------------------------"
-    print_info "Installing useful packages..." 
-    print_info "This may take several minutes, please wait..."
-    echo ""
     
-    pacman -S dkms linux-headers mlocate git cmake fastfetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf fish remmina dconf-editor fish rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm
+    echo "------------------------------------"
+    print_info "Installing useful packages..."
     
-    local pacman_exit=$?
-    if [[ $pacman_exit -ne 0 ]]; then
-        log_error "Package installation failed with exit code: $pacman_exit"
-        log_error "Please check the output above for errors"
-        return 1
+    # List of packages to install
+    local packages=(
+        "dkms"
+        "linux-headers"
+        "mlocate"
+        "git"
+        "cmake"
+        "fastfetch"
+        "tree"
+        "firefox"
+        "samba"
+        "cherrytree"
+        "lsof"
+        "flameshot"
+        "net-tools"
+        "dnsutils"
+        "dconf"
+        "fish"
+        "remmina"
+        "dconf-editor"
+        "rxvt-unicode"
+        "ranger"
+        "rofi"
+        "dmenu"
+        "terminator"
+        "chromium"
+    )
+    
+    # Check package availability and install
+    local failed_packages=()
+    local installed_packages=()
+    
+    for package in "${packages[@]}"; do
+        if pacman -Si "$package" &>/dev/null; then
+            print_info "Installing $package..."
+            pacman -S "$package" --noconfirm --needed
+            if [[ $? -eq 0 ]]; then
+                installed_packages+=("$package")
+            else
+                failed_packages+=("$package")
+                log_warning "Failed to install $package"
+            fi
+        else
+            log_warning "Package $package not found in repositories, skipping..."
+            failed_packages+=("$package")
+        fi
+    done
+    
+    echo "------------------------------------"
+    print_info "Installation summary:"
+    print_info "Installed: ${#installed_packages[@]} packages"
+    if [[ ${#failed_packages[@]} -gt 0 ]]; then
+        log_warning "Failed/Skipped: ${#failed_packages[@]} packages"
     fi
     
-    print_info "✓ Packages installed successfully"
     hwclock --systohc
 }
 
