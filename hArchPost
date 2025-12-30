@@ -362,7 +362,7 @@ function user_Info {
     mkdir -p /home/$USERNAME/AUR
     chown -R $USERNAME /home/$USERNAME/AUR
     print_info "Downloading Samba configuration..."
-    if curl -O $GITHUB/refs/heads/main/smb.conf >/dev/null 2>&1; then
+    if curl -O $GITHUB/hArch/refs/heads/main/conf/smb.conf >/dev/null 2>&1; then
         print_info "✓ Samba configuration downloaded successfully"
         
         # Ensure /etc/samba directory exists
