@@ -124,12 +124,28 @@ function check_Net {
     if ! command -v speedtest-cli &>/dev/null; then
         print_info "speedtest-cli is not installed. Installing..."
         pacman -Sy >/dev/null
-        python3 -m venv speedTest && cd speedTest/bin/ && ./pip3 install speedtest-cli >/dev/null
+        python3 -m venv speedTest
+        source speedTest/bin/activate
+        pip install speedtest-cli >/dev/null 2>&1
+        deactivate
     fi
     
     print_info "Calculating Internet Speed..."
     sleep 1
-    local speed=$(./speedtest-cli --simple | awk '/^Download:/ {print $2}')
+    
+    # Use the venv's speedtest-cli if it exists, otherwise use system one
+    if [[ -f "speedTest/bin/speedtest-cli" ]] || [[ -f "speedTest/bin/speedtest" ]]; then
+        # Activate venv and run speedtest-cli
+        source speedTest/bin/activate
+        local speed=$(speedtest-cli --simple 2>/dev/null | awk '/^Download:/ {print $2}')
+        deactivate
+    elif command -v speedtest-cli &>/dev/null; then
+        local speed=$(speedtest-cli --simple 2>/dev/null | awk '/^Download:/ {print $2}')
+    else
+        log_error "speedtest-cli not found and installation failed"
+        return 1
+    fi
+    
     sleep 1
     echo "------------------------------------"
     print_info "Download Speed: $speed Mbps"
