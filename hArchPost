@@ -4,10 +4,10 @@
 #hArchPost - Post install - Downloadeded after hArch finishes    |
 # ---------------------------------------------------------------
 # Author    : Binary-Brawler                                     |
-# Github    : github.com/Binary-Brawler                          |
+# Github    : github.com/Hacker-Imperium                         |
 # LinkedIn  : linkedin.com/in/brandon-walker-0b0542116/          |
-# Version   : 1.1.3                                              |
-# Intent    : Simplistic Linux box for Red Teaming/Pentesting    |
+# Version   : 1.1.4                                              |
+# Intent    : Post install script for hArch                      |
 # ---------------------------------------------------------------
 #                  Function - Purpose                            |
 # -----------------------------------------------------------------------------------
@@ -35,7 +35,7 @@ YELLOW='\033[0;33m'
 PURPLE='\033[0;35m'
 RESET='\033[0m'
 NEWLINE=$'\n'
-GITHUB='https://raw.githubusercontent.com/Binary-Brawler/hArch'
+GITHUB='https://raw.githubusercontent.com/Hacker-Imperium'
 
 # Logging
 log_warning() { echo -e "[${YELLOW}WARNING${RESET}] $1"; }
@@ -68,42 +68,6 @@ function slear {
     clear
 }
 
-function collect_Inputs {
-    slear
-    echo "-------------------------------------------------------------------------------------------------"
-    print_info "Collecting essential inputs at the beginning..."
-    echo "-------------------------------------------------------------------------------------------------"
-    echo ${NEWLINE}
-    
-    # Hostname
-    echo "-------------------------------------------------------------------------------------------------"
-    print_info "System Configuration:"
-    read -p "Enter Hostname: " HOSTNAME
-    echo "-------------------------------------------------------------------------------------------------"
-    
-    # Root password
-    echo "-------------------------------------------------------------------------------------------------"
-    print_info "Password Configuration:"
-    read -sp "Enter ROOT password: " ROOT_PASSWORD
-    echo ""
-    echo "-------------------------------------------------------------------------------------------------"
-    
-    # User account
-    echo "-------------------------------------------------------------------------------------------------"
-    print_info "User Account Setup:"
-    read -p "Enter Username: " USERNAME
-    echo "-------------------------------------------------------------------------------------------------"
-    
-    # User password
-    echo "-------------------------------------------------------------------------------------------------"
-    print_info "User Password:"
-    read -sp "Enter password for $USERNAME: " USER_PASSWORD
-    echo ""
-    echo "-------------------------------------------------------------------------------------------------"
-    
-    print_info "Essential inputs collected (stored in memory only)."
-    sleep 2
-}
 
 function p_Download {
     slear
@@ -123,67 +87,11 @@ function p_Download {
 function installer {
     echo "-------------------------------------------------------"
     print_info "Setting hostname to $HOSTNAME..."
-    echo "$HOSTNAME" > /etc/hostname
+    echo $HOSTNAME > /etc/hostname
     slear
-    
-    echo "------------------------------------"
-    print_info "Installing useful packages..."
-    
-    # List of packages to install
-    local packages=(
-        "dkms"
-        "linux-headers"
-        "mlocate"
-        "git"
-        "cmake"
-        "fastfetch"
-        "tree"
-        "firefox"
-        "samba"
-        "cherrytree"
-        "lsof"
-        "flameshot"
-        "net-tools"
-        "dnsutils"
-        "dconf"
-        "fish"
-        "remmina"
-        "dconf-editor"
-        "rxvt-unicode"
-        "ranger"
-        "rofi"
-        "dmenu"
-        "terminator"
-        "chromium"
-    )
-    
-    # Check package availability and install
-    local failed_packages=()
-    local installed_packages=()
-    
-    for package in "${packages[@]}"; do
-        if pacman -Si "$package" &>/dev/null; then
-            print_info "Installing $package..."
-            pacman -S "$package" --noconfirm --needed
-            if [[ $? -eq 0 ]]; then
-                installed_packages+=("$package")
-            else
-                failed_packages+=("$package")
-                log_warning "Failed to install $package"
-            fi
-        else
-            log_warning "Package $package not found in repositories, skipping..."
-            failed_packages+=("$package")
-        fi
-    done
-    
-    echo "------------------------------------"
-    print_info "Installation summary:"
-    print_info "Installed: ${#installed_packages[@]} packages"
-    if [[ ${#failed_packages[@]} -gt 0 ]]; then
-        log_warning "Failed/Skipped: ${#failed_packages[@]} packages"
-    fi
-    
+    echo  "------------------------------------"
+    print_info "Installing useful packages..." 
+    pacman -S dkms linux-headers mlocate git cmake fastfetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf fish remmina dconf-editor rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm
     hwclock --systohc
 }
 
@@ -194,7 +102,7 @@ function desktop_Env {
     systemctl enable lightdm >/dev/null 2>&1
     sleep 3
     print_info "Downloading MATE desktop configuration..."
-    if curl -O $GITHUB/main/conf/linux-vs-windows.jpg >/dev/null 2>&1; then
+    if curl -O $GITHUB/hArch/blob/main/conf/linux-vs-windows.jpg >/dev/null 2>&1; then
         if mv /linux-vs-windows.jpg /usr/share/backgrounds/mate/desktop/linux-vs-windows.jpg; then
             print_info "✓ Desktop background downloaded and installed"
         else
@@ -204,7 +112,7 @@ function desktop_Env {
         log_error "Failed to download desktop background"
     fi
     
-    if curl -O $GITHUB/main/conf/MateConfig >/dev/null 2>&1; then
+    if curl -O $GITHUB/hArch/refs/heads/main/conf/MateConfig >/dev/null 2>&1; then
         print_info "✓ MATE configuration downloaded"
     else
         log_error "Failed to download MATE configuration"
@@ -219,7 +127,7 @@ function dev_Setup {
         print_info "Setting up a coding env... This may take awhile"
         echo "-------------------------------------------------------"
         print_info "Downloading vim configuration..."
-        if curl -O $GITHUB/main/vimrc_bundle_conf >/dev/null 2>&1; then
+        if curl -O $GITHUB/hArch/refs/heads/main/vimrc_bundle_conf >/dev/null 2>&1; then
             if mv vimrc_bundle_conf /home/$USERNAME/.vimrc; then
                 print_info "✓ vim configuration installed"
             else
@@ -292,7 +200,7 @@ function vid_Driver {
             fi
 
             print_info "Downloading NVIDIA configuration files..."
-            if curl -O $GITHUB/main/conf/nvidia.hook 2>/dev/null && curl -O $GITHUB/main/conf/20-nvidia.conf 2>/dev/null; then
+            if curl -O $GITHUB/hArch/refs/heads/main/conf/nvidia.hook 2>/dev/null && curl -O $GITHUB/hArch/refs/heads/main/conf/20-nvidia.conf 2>/dev/null; then
                 print_info "✓ NVIDIA configuration files downloaded successfully"
                 mkdir -p /etc/pacman.d/hooks/ /etc/X11/xorg.conf.d/
                 if mv /nvidia.hook /etc/pacman.d/hooks/ && mv /20-nvidia.conf /etc/X11/xorg.conf.d/; then
@@ -343,7 +251,7 @@ function user_Info {
     # Only download fish config if fish is installed
     if command -v fish &>/dev/null; then
         print_info "Downloading Fish shell configuration..."
-        if curl -O $GITHUB/main/conf/fish.config >/dev/null 2>&1; then
+        if curl -O $GITHUB/hArch/refs/heads/main/conf/fish.config >/dev/null 2>&1; then
             print_info "✓ Fish configuration downloaded successfully"
             mkdir -p /home/$USERNAME/.config/fish
             if mv /fish.config /home/$USERNAME/.config/fish/config.fish; then
@@ -361,6 +269,12 @@ function user_Info {
     chown $USERNAME -R /home/$USERNAME/.config/
     mkdir -p /home/$USERNAME/AUR
     chown -R $USERNAME /home/$USERNAME/AUR
+    mkdir -p /home/$USERNAME/HacktheBox
+    chown -R $USERNAME /home/$USERNAME/HacktheBox
+    mkdir -p /home/$USERNAME/TryHackMe
+    chown -R $USERNAME /home/$USERNAME/TryHackMe
+    mkdir -p /home/$USERNAME/Workspace
+    chown -R $USERNAME /home/$USERNAME/Workspace
     print_info "Downloading Samba configuration..."
     if curl -O $GITHUB/hArch/refs/heads/main/conf/smb.conf >/dev/null 2>&1; then
         print_info "✓ Samba configuration downloaded successfully"
@@ -519,7 +433,7 @@ function hack_Tools {
     
     for tool_category in "${tools_to_install[@]}"; do
         print_info "Installing $tool_category tools..."
-        if curl -O "$GITHUB/main/Tools/$tool_category" >/dev/null 2>&1; then
+        if curl -O "$GITHUB/hArch/refs/heads/main/Tools/$tool_category" >/dev/null 2>&1; then
             if [[ -f "/$tool_category" ]]; then
                 pacman -S - < "/$tool_category" --noconfirm
                 rm "/$tool_category"
@@ -537,59 +451,6 @@ function hack_Tools {
     echo "---------------------------------------------------------------"
 }
 
-function docker_Lab {
-    echo "---------------------------------------------------------------"
-    read -p 'Do you want to INSTALL the Docker Home Lab? [y/N]: ' DOCKER_LAB
-    if [[ $DOCKER_LAB == 'y' || $DOCKER_LAB == 'Y' ]]; then
-        print_info "Installing Docker Home Lab..."
-        echo "------------------------------------"
-        
-        # Install Docker
-        print_info "Installing Docker..."
-        pacman -S docker docker-compose --noconfirm >/dev/null 2>&1
-        
-        # Enable Docker service
-        systemctl enable docker >/dev/null 2>&1
-        systemctl start docker >/dev/null 2>&1
-        
-        # Add user to docker group
-        usermod -aG docker $USERNAME >/dev/null 2>&1
-        
-        # Create Docker lab directory
-        mkdir -p /home/$USERNAME/docker-lab
-        cd /home/$USERNAME/docker-lab
-        
-        # Copy Docker files from /Docker directory
-        print_info "Copying Docker lab files..."
-        cp /Docker/Dockerfile /home/$USERNAME/docker-lab/
-        cp /Docker/Docker-compose.yaml /home/$USERNAME/docker-lab/
-        cp /Docker/start-lab.sh /home/$USERNAME/docker-lab/
-        cp /Docker/README.md /home/$USERNAME/docker-lab/
-        cp /Docker/.dockerignore /home/$USERNAME/docker-lab/
-        
-        # Make startup script executable
-        chmod +x start-lab.sh
-        
-        # Set ownership
-        chown -R $USERNAME:$USERNAME /home/$USERNAME/docker-lab
-        
-        print_info "Docker lab installed successfully!"
-        echo "------------------------------------"
-        print_info "Docker lab location: /home/$USERNAME/docker-lab"
-        print_info "To start the lab: cd /home/$USERNAME/docker-lab && ./start-lab.sh"
-        print_info "Available vulnerable apps:"
-        echo "  - DVWA: http://localhost:8080 (admin/password)"
-        echo "  - Juice Shop: http://localhost:3000 (admin/admin123)"
-        echo "  - WebGoat: http://localhost:8081 (webgoat/webgoat)"
-        echo "  - Mutillidae: http://localhost:8082 (admin/admin)"
-        echo "  - Metasploitable 2: SSH localhost:2222 (msfadmin/msfadmin)"
-        echo "  - Kioptrix Level 1: http://localhost:8083 (root/root)"
-        echo "------------------------------------"
-        log_success "Docker Home Lab ready for use!"
-    else
-        log_warning "Skipping Docker lab installation..."
-    fi
-}
 
 function complete {
     slear
@@ -606,9 +467,6 @@ function complete {
     log_warning "2: umount -a"
     log_warning "3: reboot"
     rm /hArchPost
-    rm -rf /Docker
-    # Clear sensitive variables from memory
-    unset ROOT_PASSWORD USER_PASSWORD
     exit
 }
 

@@ -4,24 +4,28 @@
 # hArch Installer (Hackers Arch)                                 |
 # ---------------------------------------------------------------
 # Author    : Binary-Brawler                                     |
-# Github    : github.com/Binary-Brawler                          |
+# Github    : github.com/Hacker-Imperium                         |
 # LinkedIn  : linkedin.com/in/brandon-walker-0b0542116/          |
-# Version   : 1.1.3                                              |
+# Discord   : https://discord.gg/MQbvMhSSMq                      |
+# Version   : 1.1.4                                              |
 # Intent    : Simplistic Linux box for Red Teaming/Pentesting    |
 #               - BlackArch Repo (Access to tools)               |
 #               - Lightwieght distro for older machines          |
 #               - vimrc/nvim/vscode (for coders)                 |
-#               - Much efficient install VS Kali/Parrot ;)       |
+#               - More efficient VS Kali/Parrot ;)               |
 # ---------------------------------------------------------------
 #                  Function - Purpose                            |
 # ---------------------------------------------------------------------------
 # slear               - Repeated Sleep/Clear function                        |
 # greeter             - Entrypoint                                           |
+# collect_Inputs      - Gather drive information and partition options       |
+# update_Keyring      - Update keyring tohandle old ISO trust issues         |
 # check_Net           - Checks internet speed for parallel downloads         |
 # calculate_Swap_Size - if/else to determine SWAP size                       |
+# validate_partitions - Validate partition scheme                            |
 # partition_Drive     - Automated partitioning following basic Arch install  |
 # installer           - Install base system and copy hArchPost script        |
-# last_Min_Setup      - Installs second script in /mnt and                   |
+# last_Min_Setup      - Installs second script in /mnt                       |
 # ---------------------------------------------------------------------------
 # Constants
 GREEN='\033[0;32m'
@@ -31,7 +35,7 @@ YELLOW='\033[0;33m'
 PURPLE='\033[0;35m'
 RESET='\033[0m'
 NEWLINE=$'\n'
-GITHUB='https://raw.githubusercontent.com/Binary-Brawler/hArch'
+GITHUB='https://raw.githubusercontent.com/Hacker-Imperium'
 
 # Logging
 log_warning() { echo -e "[${YELLOW}WARNING${RESET}] $1"; }
@@ -72,19 +76,19 @@ function greeter {
 function collect_Inputs {
     slear
     echo "-------------------------------------------------------------------------------------------------"
-    print_info "Collecting all required inputs at the beginning..."
+    print_info "Gathering drive information..."
     echo "-------------------------------------------------------------------------------------------------"
     echo ${NEWLINE}
     
     # Display available drives
     print_info "Available drives:"
-    lsblk
+    lsblk -f 
     echo ${NEWLINE}
     
     # Ask about manual partitioning
     echo "-------------------------------------------------------------------------------------------------"
     print_info "Partitioning Options:"
-    print_info "If you want to manually partition, you may do so. Just type exit after mounting /mnt"
+    print_info "If you want to manually partition, you may do so. Just type 'exit' after mounting /mnt"
     print_info "Otherwise, automated partition will create the standard BIOS/UEFI partitions"
     echo "-------------------------------------------------------------------------------------------------"
     read -p "Manually partition [y/N]: " MANUAL_PARTITION
@@ -99,7 +103,7 @@ function collect_Inputs {
     fi
     
     print_info "Inputs collected."
-    sleep 2
+    sleep 3
 }
 
 function update_Keyring {
@@ -358,24 +362,13 @@ function last_Min_Setup {
     echo 0 > /proc/sys/kernel/hung_task_timeout_secs
     mv enable_parallel.txt /mnt
     mv firmware_type.txt /mnt
-    curl -O $GITHUB/main/hArchPost >/dev/null 2>&1
+    curl -O $GITHUB/hArch/refs/heads/main/hArchPost >/dev/null 2>&1
     chmod +x hArchPost
     mv hArchPost /mnt
-    
-    # Create Docker directory and copy Docker lab files
-    mkdir -p /mnt/Docker
-    print_info "Downloading Docker lab files for optional installation..."
-    curl -O $GITHUB/main/Docker/Dockerfile >/dev/null 2>&1
-    curl -O $GITHUB/main/Docker/Docker-compose.yaml >/dev/null 2>&1
-    curl -O $GITHUB/main/Docker/start-lab.sh >/dev/null 2>&1
-    curl -O $GITHUB/main/Docker/README.md >/dev/null 2>&1
-    curl -O $GITHUB/main/Docker/.dockerignore >/dev/null 2>&1
-    mv Dockerfile Docker-compose.yaml start-lab.sh README.md .dockerignore /mnt/Docker/
     
     echo  "----------------------------"
     print_info "Time to enter CHROOT"
     print_info "The final script has been installed and moved to your new root directory"
-    print_info "Docker lab files are available in /Docker/ for optional installation"
     print_info "Run these commands to finish setup"
     echo "------------------------------------------"
     echo ${NEWLINE}
@@ -388,7 +381,6 @@ function last_Min_Setup {
 main() {
     greeter
     collect_Inputs
-    
     slear
     check_Net || { log_error "Check your Internet"; exit 1; }
     slear
@@ -418,6 +410,8 @@ main() {
 
         partition_Drive "$DRIVE"
     fi
+
+    slear
 
     installer || { log_error "Base system installation failed. Exiting."; exit 1; }
 
