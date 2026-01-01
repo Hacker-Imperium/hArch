@@ -487,7 +487,4 @@ function and_In_The_Script_Bind_Them {
     echo "$encoded" | base64 --decode
 }
 
-# Initialize: Collect inputs (stored in memory only)
-collect_Inputs
-
 one_Func_To_Rule_Them_All
