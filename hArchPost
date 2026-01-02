@@ -129,12 +129,13 @@ function installer {
 }
 
 function desktop_Env {
-    echo "------------------------"
+    echo "-------------------------------"
     print_info "Setting up Mate DE..."
     pacman -S  mate mate-extra lightdm lightdm-gtk-greeter xorg xorg-server xorg-apps xorg-xinit --noconfirm >/dev/null 2>&1
     systemctl enable lightdm >/dev/null 2>&1
     sleep 3
-    print_info "Downloading MATE desktop configuration..."
+    echo "----------------------------------------------------------------------------------------------------------"
+    print_info "Downloading MATE desktop configuration... Efficient for low spec systems, change as you see fit"
     if curl -O $GITHUB/hArch/blob/main/conf/linux-vs-windows.jpg >/dev/null 2>&1; then
         if mv /linux-vs-windows.jpg /usr/share/backgrounds/mate/desktop/linux-vs-windows.jpg; then
             print_info "✓ Desktop background downloaded and installed"
@@ -169,6 +170,28 @@ function dev_Setup {
         else
             log_error "Failed to download vim configuration"
         fi
+
+        echo "-----------------------------------------------------------------"
+        print_info "Installing programming languages and tools:"
+        echo "  • Java (OpenJDK)"
+        echo "  • Python 3 (with pip)"
+        echo "  • Rust (via rustup)"
+        echo "  • Go"
+        echo "  • Node.js & npm (JavaScript)"
+        echo "  • Haskell (available via 'installHaskell' function in fish)"
+        echo "-----------------------------------------------------------------"
+        print_info "Installing IDEs and development tools..."
+        echo "  • Visual Studio Code"
+        echo "  • Neovim"
+        echo "  • PyCharm Community Edition"
+        echo "  • IntelliJ IDEA Community Edition"
+        echo "-----------------------------------------------------------------"
+        print_info "Installing containerization and virtualization:"
+        echo "  • Docker (container platform)"
+        echo "  • VirtualBox (virtualization)"
+        echo "  • Python virtual environments (venv support via pip)"
+        echo "-----------------------------------------------------------------"
+        sleep 2
         pacman -S jdk-openjdk python-pip rustup go nodejs npm python3 code neovim gimp audacity wireshark-qt vlc btop virtualbox postman docker pycharm-community-edition intellij-idea-community-edition --noconfirm >/dev/null 2>&1 
     else
         log_warning "Do you know where the term Script Kiddie comes from?"
@@ -178,7 +201,7 @@ function dev_Setup {
 
 
 function vid_Driver {
-    echo "----------------------------------"
+    echo "--------------------------------------"
     print_info "Gathering Graphics info..."
     sleep 2
     str=$(lspci -vmm | grep VGA -A6)
@@ -258,12 +281,12 @@ function vid_Driver {
 }
 
 function user_Info {
-    echo "--------------------------------"
+    echo "-------------------------------------------------"
     print_info "Setting Root password..."
     echo "root:$ROOT_PASSWORD" | chpasswd || log_error "Failed to set password for ROOT"
     unset ROOT_PASSWORD
     slear
-    echo "-------------------------------"
+    echo "-------------------------------------------------"
     print_info "Creating user account: $USERNAME..."
     
     # Determine shell - use fish if available, otherwise use bash
@@ -278,7 +301,7 @@ function user_Info {
     useradd -mg users -G wheel,power,storage -s "$user_shell" $USERNAME
     echo '%wheel ALL=(ALL:ALL) ALL' >> /etc/sudoers.d/wheel_group
     chmod 440 /etc/sudoers.d/wheel_group
-    echo "-------------------------------------"
+    echo "---------------------------------------------"
     print_info "Setting $USERNAME password..."
     echo "$USERNAME:$USER_PASSWORD" | chpasswd || log_error "Failed to set password for user $USERNAME."
     unset USER_PASSWORD
@@ -376,7 +399,7 @@ function booter {
         grub-mkconfig -o /boot/grub/grub.cfg
         mkinitcpio -p linux
     else
-        echo "-------------------------------------"
+        echo "---------------------------------------------"
         print_info "Installing BIOS Bootloader..."
         pacman -S grub --noconfirm >/dev/null
         grub-install --target=i386-pc $BOOTLOADER_DRIVE --recheck
@@ -398,9 +421,9 @@ function black_Arch {
 }
 
 function hack_Tools {
-    echo "---------------------------------------------------------------"
+    echo "-----------------------------------------------------------------------------------------"
     print_info "Hacking Tools Installation"
-    echo "---------------------------------------------------------------"
+    echo "-----------------------------------------------------------------------------------------"
     echo ""
     echo "Select which tool categories you want to install:"
     echo ""
@@ -414,7 +437,7 @@ function hack_Tools {
     echo "  [8] Malware       - Malware analysis tools (volatility3, yara, cuckoo, etc.)"
     echo "  [9] Master        - All tools combined (everything above)"
     echo ""
-    echo "You can select multiple categories by entering numbers separated by commas or spaces"
+    echo "You can select multiple categories by entering numbers separated by commas"
     echo "Example: 1,3,4 or 2,5,7"
     echo ""
     echo "---------------------------------------------------------------"
@@ -482,8 +505,10 @@ function hack_Tools {
         echo ""
     done
     
-    log_success "Tool installation completed!"
     echo "---------------------------------------------------------------"
+    log_success "Tool installation completed!"
+    sleep 2
+    
 }
 
 
