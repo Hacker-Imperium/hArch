@@ -122,9 +122,9 @@ function installer {
     print_info "Setting hostname to $HOSTNAME..."
     echo $HOSTNAME > /etc/hostname
     slear
-    echo  "------------------------------------"
-    print_info "Installing useful packages..." 
-    pacman -S dkms linux-headers mlocate git cmake fastfetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf fish remmina dconf-editor rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm
+    echo  "----------------------------------------------------"
+    print_info "Installing useful packages... Grab a coffee!" 
+    pacman -S dkms linux-headers mlocate git cmake fastfetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf fish remmina dconf-editor rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm >/dev/null 2>&1
     hwclock --systohc
 }
 
