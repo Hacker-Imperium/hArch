@@ -512,6 +512,238 @@ function hack_Tools {
 }
 
 
+function ad_Install {
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Active Directory Domain Join"
+    echo "-------------------------------------------------------------------------------------------------"
+    read -p "Join this system to an Active Directory domain? [y/N]: " JOIN_AD
+    
+    if [[ "$JOIN_AD" != 'y' && "$JOIN_AD" != 'Y' ]]; then
+        log_warning "Skipping Active Directory domain join..."
+        return
+    fi
+    
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Active Directory Configuration"
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # Collect domain information
+    read -p "Enter domain name (e.g., example.com): " DOMAIN_NAME
+    if [[ -z "$DOMAIN_NAME" ]]; then
+        log_error "Domain name is required. Skipping AD join..."
+        return
+    fi
+    
+    # Extract domain components
+    DOMAIN_UPPER=$(echo "$DOMAIN_NAME" | tr '[:lower:]' '[:upper:]')
+    DOMAIN_SHORT=$(echo "$DOMAIN_NAME" | cut -d. -f1 | tr '[:lower:]' '[:upper:]')
+    
+    read -p "Enter domain controller IP (optional, for DNS): " DC_IP
+    
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Domain Join Credentials"
+    echo "Note: The account must have permissions to join computers to the domain"
+    echo "-------------------------------------------------------------------------------------------------"
+    read -p "Enter AD username (e.g., administrator or DOMAIN\\username): " AD_USERNAME
+    if [[ -z "$AD_USERNAME" ]]; then
+        log_error "Username is required. Skipping AD join..."
+        return
+    fi
+    
+    read -sp "Enter AD password: " AD_PASSWORD
+    echo ""
+    
+    if [[ -z "$AD_PASSWORD" ]]; then
+        log_error "Password is required. Skipping AD join..."
+        return
+    fi
+    
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Installing Active Directory components..."
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # Install packages from main repositories
+    print_info "Installing sssd, krb5, samba, and ntp from main repositories..."
+    pacman -S sssd krb5 samba ntp --noconfirm >/dev/null 2>&1
+    
+    if [[ $? -ne 0 ]]; then
+        log_error "Failed to install AD packages from main repos. Skipping AD join..."
+        return
+    fi
+    
+    # Install AUR packages (realmd and adcli) - must build as non-root user
+    print_info "Installing realmd and adcli from AUR (this may take a few minutes)..."
+    print_info "Note: AUR packages must be built as a non-root user"
+    
+    # Ensure user has AUR directory
+    chown -R $USERNAME:users /home/$USERNAME/AUR
+    
+    # Install realmd from AUR
+    print_info "Building realmd from AUR..."
+    if [[ -d "/home/$USERNAME/AUR/realmd" ]]; then
+        rm -rf /home/$USERNAME/AUR/realmd
+    fi
+    sudo -u $USERNAME git clone "https://aur.archlinux.org/realmd.git" /home/$USERNAME/AUR/realmd >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        cd /home/$USERNAME/AUR/realmd
+        if sudo -u $USERNAME makepkg -si --noconfirm >/dev/null 2>&1; then
+            print_info "✓ realmd installed successfully"
+        else
+            log_error "Failed to build realmd from AUR"
+            cd -
+            return
+        fi
+        cd -
+    else
+        log_error "Failed to clone realmd from AUR"
+        return
+    fi
+    
+    # Install adcli from AUR
+    print_info "Building adcli from AUR..."
+    if [[ -d "/home/$USERNAME/AUR/adcli-git" ]]; then
+        rm -rf /home/$USERNAME/AUR/adcli-git
+    fi
+    sudo -u $USERNAME git clone "https://aur.archlinux.org/adcli-git.git" /home/$USERNAME/AUR/adcli-git >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        cd /home/$USERNAME/AUR/adcli-git
+        if sudo -u $USERNAME makepkg -si --noconfirm >/dev/null 2>&1; then
+            print_info "✓ adcli installed successfully"
+        else
+            log_error "Failed to build adcli from AUR"
+            cd -
+            return
+        fi
+        cd -
+    else
+        log_error "Failed to clone adcli from AUR"
+        return
+    fi
+    
+    # Cleanup AUR build directories (optional, but keeps things tidy)
+    # rm -rf /home/$USERNAME/AUR/realmd /home/$USERNAME/AUR/adcli-git
+    
+    # Configure NTP (critical for AD)
+    print_info "Configuring NTP for time synchronization..."
+    systemctl enable ntpd
+    systemctl start ntpd
+    timedatectl set-ntp true
+    
+    # Configure DNS if DC IP provided
+    if [[ -n "$DC_IP" ]]; then
+        print_info "Configuring DNS to use domain controller..."
+        # Backup existing resolv.conf
+        cp /etc/resolv.conf /etc/resolv.conf.backup
+        
+        # Add domain controller as nameserver
+        echo "nameserver $DC_IP" > /etc/resolv.conf
+        echo "search $DOMAIN_NAME" >> /etc/resolv.conf
+        
+        # Add to /etc/hosts for redundancy
+        if ! grep -q "$DC_IP.*$DOMAIN_NAME" /etc/hosts; then
+            echo "$DC_IP $DOMAIN_NAME" >> /etc/hosts
+        fi
+    fi
+    
+    # Test DNS resolution
+    print_info "Testing DNS resolution for domain..."
+    if ! nslookup "$DOMAIN_NAME" >/dev/null 2>&1; then
+        log_warning "DNS resolution test failed. Continuing anyway..."
+    else
+        print_info "✓ DNS resolution successful"
+    fi
+    
+    # Discover realm
+    print_info "Discovering realm information..."
+    if ! realm discover "$DOMAIN_NAME" >/dev/null 2>&1; then
+        log_warning "Realm discovery had issues, but continuing..."
+    fi
+    
+    # Join domain
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Attempting to join domain: $DOMAIN_NAME"
+    print_info "This may take a moment..."
+    echo "-------------------------------------------------------------------------------------------------"
+    
+    # Use realm join with credentials
+    # Format username properly if not already formatted
+    if [[ "$AD_USERNAME" != *"\\"* ]] && [[ "$AD_USERNAME" != *"@"* ]]; then
+        AD_USERNAME_FULL="$AD_USERNAME@$DOMAIN_NAME"
+    else
+        AD_USERNAME_FULL="$AD_USERNAME"
+    fi
+    
+    # Join domain using realm
+    if echo "$AD_PASSWORD" | realm join --user="$AD_USERNAME_FULL" "$DOMAIN_NAME" --unattended; then
+        print_info "✓ Successfully joined domain: $DOMAIN_NAME"
+        
+        # Configure SSSD
+        print_info "Configuring SSSD..."
+        systemctl enable sssd
+        systemctl start sssd
+        
+        # Configure Samba
+        print_info "Configuring Samba for AD integration..."
+        systemctl enable smb
+        systemctl enable nmb
+        systemctl start smb
+        systemctl start nmb
+        
+        # Update nsswitch.conf for AD authentication
+        print_info "Updating nsswitch.conf for AD authentication..."
+        if ! grep -q "sss" /etc/nsswitch.conf; then
+            sed -i 's/^passwd:.*/passwd: files sss/' /etc/nsswitch.conf
+            sed -i 's/^group:.*/group: files sss/' /etc/nsswitch.conf
+            sed -i 's/^shadow:.*/shadow: files sss/' /etc/nsswitch.conf
+        fi
+        
+        # Configure sudoers for domain admins (optional)
+        print_info "Configuring sudo access for Domain Admins..."
+        if ! grep -q "%Domain Admins" /etc/sudoers.d/domain_admins 2>/dev/null; then
+            echo "%Domain\\ Admins ALL=(ALL) ALL" > /etc/sudoers.d/domain_admins
+            chmod 440 /etc/sudoers.d/domain_admins
+        fi
+        
+        # Test authentication
+        print_info "Testing domain authentication..."
+        if id "$AD_USERNAME_FULL" >/dev/null 2>&1; then
+            print_info "✓ Domain authentication test successful"
+        else
+            log_warning "Domain authentication test had issues, but domain join completed"
+        fi
+        
+        log_success "Active Directory domain join completed successfully!"
+        print_info "Domain users can now log in using: username@$DOMAIN_NAME"
+        print_info "You may need to reboot for all changes to take effect"
+        
+    else
+        log_error "Failed to join domain: $DOMAIN_NAME"
+        log_error "Please verify:"
+        log_error "  - Domain name is correct"
+        log_error "  - Username and password are correct"
+        log_error "  - Account has permissions to join computers to the domain"
+        log_error "  - Network connectivity to domain controller"
+        log_error "  - Time synchronization (NTP) is working"
+        
+        # Cleanup on failure
+        print_info "Cleaning up failed configuration..."
+        systemctl stop sssd 2>/dev/null
+        systemctl disable sssd 2>/dev/null
+        
+        # Restore DNS if we modified it
+        if [[ -n "$DC_IP" ]] && [[ -f "/etc/resolv.conf.backup" ]]; then
+            mv /etc/resolv.conf.backup /etc/resolv.conf
+        fi
+    fi
+    
+    # Clear password from memory
+    unset AD_PASSWORD
+    
+    echo "-------------------------------------------------------------------------------------------------"
+    sleep 3
+}
+
+
 function complete {
     slear
     echo "-------------------------------------------------------------------------------------------------"
