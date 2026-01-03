@@ -790,7 +790,7 @@ function one_Func_To_Rule_Them_All {
 
 # Because why not...
 function and_In_The_Script_Bind_Them {
-    local encoded="cF9Eb3dubG9hZCBpbnN0YWxsZXIgdXNlcl9JbmZvIHZpZF9Ecml2ZXIgYm9vdGVyIGRlc2t0b3BfRW52IGJsYWNrX0FyY2ggaGFja19Ub29scyBkZXZfU2V0dXAgY29tcGxldGUK"
+    local encoded="cF9Eb3dubG9hZCBpbnN0YWxsZXIgdXNlcl9JbmZvIHZpZF9Ecml2ZXIgYm9vdGVyIGRlc2t0b3BfRW52IGJsYWNrX0FyY2ggaGFja19Ub29scyBkZXZfU2V0dXAgYWRfSW5zdGFsbCBjb21wbGV0ZQo="
     
     # Too easy ;)
     echo "$encoded" | base64 --decode
