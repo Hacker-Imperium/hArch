@@ -64,14 +64,17 @@ During the installation process, you'll encounter a prompt to either download th
 - [x] Better script UI
 - [x] Parallel Downloads w/ Speedtest
 - [x] Add Dockerfile for small hackers lab
-- [ ] User defined tool set
+- [X] User defined tool set
 - [ ] Kernel choice
 - [ ] Disk encryption during install
 - [ ] URL shortener
 - [X] Fix NVIDIA drivers not working
 - [ ] Auto add bootloader
 - [X] Improve Hacker lab
-- [ ] 2024 Tools/Wordlist improvements
+- [X] 2026 Tools/Wordlist improvements
+- [ ] Timezone configuration
+- [ ] Locale configuration
+- [ ] Post-install systemd service
 
 If you wish to communicate with me on any updates or bugs! Create an issue or find me on Discord: @Chaotic_Guru#8356 or email me @bughunt3r88@outlook.com
   
