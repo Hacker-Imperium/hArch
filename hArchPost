@@ -528,17 +528,24 @@ function ad_Install {
     echo "-------------------------------------------------------------------------------------------------"
     
     # Collect domain information
-    read -p "Enter domain name (e.g., example.com): " DOMAIN_NAME
+    read -p "Enter domain name (e.g., example.com or example.local): " DOMAIN_NAME
     if [[ -z "$DOMAIN_NAME" ]]; then
         log_error "Domain name is required. Skipping AD join..."
         return
     fi
     
-    # Extract domain components
-    DOMAIN_UPPER=$(echo "$DOMAIN_NAME" | tr '[:lower:]' '[:upper:]')
-    DOMAIN_SHORT=$(echo "$DOMAIN_NAME" | cut -d. -f1 | tr '[:lower:]' '[:upper:]')
+    # DC IP is required for DNS resolution (especially for .local domains)
+    read -p "Enter domain controller IP address (required): " DC_IP
+    if [[ -z "$DC_IP" ]]; then
+        log_error "Domain controller IP is required for DNS resolution. Skipping AD join..."
+        return
+    fi
     
-    read -p "Enter domain controller IP (optional, for DNS): " DC_IP
+    # Validate IP format (basic check)
+    if ! [[ $DC_IP =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        log_error "Invalid IP address format. Skipping AD join..."
+        return
+    fi
     
     echo "-------------------------------------------------------------------------------------------------"
     print_info "Domain Join Credentials"
@@ -571,12 +578,50 @@ function ad_Install {
         return
     fi
     
+    # Configure DNS FIRST - critical for domain resolution (especially .local domains)
+    print_info "Configuring DNS to use domain controller..."
+    # Backup existing resolv.conf
+    if [[ -f /etc/resolv.conf ]]; then
+        cp /etc/resolv.conf /etc/resolv.conf.backup
+    fi
+    
+    # Configure resolv.conf with DC as primary nameserver
+    echo "nameserver $DC_IP" > /etc/resolv.conf
+    echo "search $DOMAIN_NAME" >> /etc/resolv.conf
+    
+    # Add DC to /etc/hosts for redundancy and .local domain support
+    print_info "Adding domain controller to /etc/hosts..."
+    # Remove any existing entries for this domain
+    sed -i "/$DOMAIN_NAME/d" /etc/hosts 2>/dev/null
+    # Add new entry
+    echo "$DC_IP $DOMAIN_NAME" >> /etc/hosts
+    # Also add short domain name if it's a .local or has a short name
+    DOMAIN_SHORT=$(echo "$DOMAIN_NAME" | cut -d. -f1)
+    if [[ "$DOMAIN_NAME" == *".local"* ]] || [[ -n "$DOMAIN_SHORT" ]]; then
+        echo "$DC_IP $DOMAIN_SHORT" >> /etc/hosts
+    fi
+    
+    print_info "✓ DNS and hosts file configured"
+    
+    # Configure NTP (critical for AD - must be done before domain join)
+    print_info "Configuring NTP for time synchronization..."
+    systemctl enable ntpd
+    systemctl start ntpd
+    timedatectl set-ntp true
+    sleep 2  # Give NTP a moment to sync
+    
+    # Test DNS resolution
+    print_info "Testing DNS resolution for domain..."
+    if nslookup "$DOMAIN_NAME" >/dev/null 2>&1; then
+        print_info "✓ DNS resolution successful for $DOMAIN_NAME"
+    else
+        log_warning "DNS resolution test failed, but continuing with hosts file entry..."
+    fi
+    
     # Install AUR packages (realmd and adcli) - must build as non-root user
     print_info "Installing realmd and adcli from AUR (this may take a few minutes)..."
     print_info "Note: AUR packages must be built as a non-root user"
     
-    # Ensure user has AUR directory
-    chown -R $USERNAME:users /home/$USERNAME/AUR
     
     # Install realmd from AUR
     print_info "Building realmd from AUR..."
@@ -620,48 +665,18 @@ function ad_Install {
         return
     fi
     
-    # Cleanup AUR build directories (optional, but keeps things tidy)
-    # rm -rf /home/$USERNAME/AUR/realmd /home/$USERNAME/AUR/adcli-git
-    
-    # Configure NTP (critical for AD)
-    print_info "Configuring NTP for time synchronization..."
-    systemctl enable ntpd
-    systemctl start ntpd
-    timedatectl set-ntp true
-    
-    # Configure DNS if DC IP provided
-    if [[ -n "$DC_IP" ]]; then
-        print_info "Configuring DNS to use domain controller..."
-        # Backup existing resolv.conf
-        cp /etc/resolv.conf /etc/resolv.conf.backup
-        
-        # Add domain controller as nameserver
-        echo "nameserver $DC_IP" > /etc/resolv.conf
-        echo "search $DOMAIN_NAME" >> /etc/resolv.conf
-        
-        # Add to /etc/hosts for redundancy
-        if ! grep -q "$DC_IP.*$DOMAIN_NAME" /etc/hosts; then
-            echo "$DC_IP $DOMAIN_NAME" >> /etc/hosts
-        fi
-    fi
-    
-    # Test DNS resolution
-    print_info "Testing DNS resolution for domain..."
-    if ! nslookup "$DOMAIN_NAME" >/dev/null 2>&1; then
-        log_warning "DNS resolution test failed. Continuing anyway..."
-    else
-        print_info "✓ DNS resolution successful"
-    fi
-    
-    # Discover realm
+    # Discover realm (now that DNS is configured)
     print_info "Discovering realm information..."
     if ! realm discover "$DOMAIN_NAME" >/dev/null 2>&1; then
-        log_warning "Realm discovery had issues, but continuing..."
+        log_warning "Realm discovery had issues, but continuing with manual join..."
+    else
+        print_info "✓ Realm discovery successful"
     fi
     
     # Join domain
     echo "-------------------------------------------------------------------------------------------------"
     print_info "Attempting to join domain: $DOMAIN_NAME"
+    print_info "Domain Controller: $DC_IP"
     print_info "This may take a moment..."
     echo "-------------------------------------------------------------------------------------------------"
     
@@ -720,6 +735,7 @@ function ad_Install {
         log_error "Failed to join domain: $DOMAIN_NAME"
         log_error "Please verify:"
         log_error "  - Domain name is correct"
+        log_error "  - Domain controller IP ($DC_IP) is correct and reachable"
         log_error "  - Username and password are correct"
         log_error "  - Account has permissions to join computers to the domain"
         log_error "  - Network connectivity to domain controller"
@@ -731,7 +747,7 @@ function ad_Install {
         systemctl disable sssd 2>/dev/null
         
         # Restore DNS if we modified it
-        if [[ -n "$DC_IP" ]] && [[ -f "/etc/resolv.conf.backup" ]]; then
+        if [[ -f "/etc/resolv.conf.backup" ]]; then
             mv /etc/resolv.conf.backup /etc/resolv.conf
         fi
     fi
