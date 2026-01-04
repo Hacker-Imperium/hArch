@@ -198,8 +198,6 @@ apksizer
 volatility3
 cuckoo
 pev
-pefile
-strings
 file
 exiftool
 capstone
@@ -212,7 +210,6 @@ iaito
 foremost
 scalpel
 testdisk
-photorec
 sleuthkit
 autopsy
 dc3dd
@@ -225,8 +222,6 @@ chainsaw
 chkrootkit
 rkhunter
 lynis
-tripwire
-aide
 osquery
 suricata
 snort

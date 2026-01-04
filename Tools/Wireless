@@ -1,7 +1,6 @@
 aircrack-ng
 reaver
 bully
-wifi-pumpkin3
 bettercap
 kismet
 wireshark-cli
@@ -12,7 +11,6 @@ wifite
 hcxtools
 hcxdumptool
 hashcat
-bully
 pixiewps
 wifiphisher
 wifi-honey
@@ -29,4 +27,3 @@ rtlsdr-scanner
 gqrx
 sdrangel
 urh
-

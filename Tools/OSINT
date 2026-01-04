@@ -2,7 +2,6 @@ theharvester
 recon-ng
 maltego
 spiderfoot
-shodan
 osrframework
 amass
 subfinder
@@ -10,7 +9,6 @@ httpx
 waybackurls
 gau
 chaos-client
-notify
 dnsrecon
 dnsenum
 dnsutils
@@ -37,7 +35,6 @@ droopescan
 joomlascan
 gospider
 httrack
-webhttrack
 gobuster
 dirb
 dirbuster
@@ -51,15 +48,10 @@ xsstrike
 sqlmap
 nosqlmap
 mongoaudit
-redis-cli
-memcached-tool
 enum4linux
 smbmap
 smbclient
-ldapsearch
-ldapdomaindump
 kerbrute
-impacket-scripts
 bloodhound
 adidnsdump
 aclpwn
@@ -68,10 +60,6 @@ responder
 mitm6
 ntlmrecon
 windapsearch
-pywerview
 powersploit
 empire
-covenant
-merlin
 sliver
-
