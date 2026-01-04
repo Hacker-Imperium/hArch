@@ -333,7 +333,7 @@ function user_Info {
     chown -R $USERNAME /home/$USERNAME/TryHackMe
     mkdir -p /home/$USERNAME/Workspace
     chown -R $USERNAME /home/$USERNAME/Workspace
-    print_info "Downloading Samba configuration... You'll need for for HacktheBox and TryHackMe"
+    print_info "Downloading Samba Example configuration... You'll need for for HacktheBox and TryHackMe"
     if curl -O $GITHUB/hArch/refs/heads/main/conf/smb.conf >/dev/null 2>&1; then
         print_info "✓ Samba configuration downloaded successfully"
         
@@ -344,14 +344,14 @@ function user_Info {
         fi
         
         # Move the configuration file
-        if mv /smb.conf /etc/samba/smb.conf; then
-            print_info "✓ Samba configuration installed to /etc/samba/smb.conf"
+        if mv /smb.conf /etc/samba/smbExample.conf; then
+            print_info "✓ Samba Example configuration installed to /etc/samba/smbExample.conf"
         else
-            log_error "Failed to move smb.conf to /etc/samba/"
+            log_error "Failed to move smbExample.conf to /etc/samba/"
         fi
     else
-        log_error "Failed to download smb.conf from GitHub"
-        log_warning "Samba will use default configuration"
+        log_error "Failed to download smbExample.conf from GitHub"
+        log_warning "Samba will use default Example configuration"
     fi
 }
 
@@ -569,9 +569,10 @@ function ad_Install {
     print_info "Installing Active Directory components..."
     echo "-------------------------------------------------------------------------------------------------"
     
-    # Install packages from main repositories
-    print_info "Installing sssd, krb5, samba, and ntp from main repositories..."
-    pacman -S sssd krb5 samba ntp --noconfirm >/dev/null 2>&1
+    # Install packages from main repositories (following Arch wiki method)
+    print_info "Installing Samba, Kerberos, and NTP packages..."
+    print_info "Following Arch Linux wiki Active Directory integration method"
+    pacman -S smbclient krb5 ntp bind whois --noconfirm >/dev/null 2>&1
     
     if [[ $? -ne 0 ]]; then
         log_error "Failed to install AD packages from main repos. Skipping AD join..."
@@ -591,24 +592,48 @@ function ad_Install {
     
     # Add DC to /etc/hosts for redundancy and .local domain support
     print_info "Adding domain controller to /etc/hosts..."
-    # Remove any existing entries for this domain
-    sed -i "/$DOMAIN_NAME/d" /etc/hosts 2>/dev/null
-    # Add new entry
-    echo "$DC_IP $DOMAIN_NAME" >> /etc/hosts
+    
+    # Function to check if domain exists in hosts file with specific IP
+    domain_exists_with_ip() {
+        local ip=$1
+        local domain=$2
+        # Check if line exists with this IP and domain
+        grep -qE "^[[:space:]]*${ip}[[:space:]]+.*[[:space:]]+${domain}[[:space:]]*$|^[[:space:]]*${ip}[[:space:]]+.*[[:space:]]+${domain}[[:space:]]+|^[[:space:]]*${ip}[[:space:]]+${domain}[[:space:]]*$" /etc/hosts 2>/dev/null
+    }
+    
+    # Check if domain already exists with this IP
+    if domain_exists_with_ip "$DC_IP" "$DOMAIN_NAME"; then
+        print_info "Domain $DOMAIN_NAME already exists in /etc/hosts with IP $DC_IP - skipping"
+    else
+        # Check if domain exists with different IP and remove it
+        if grep -qE "[[:space:]]+${DOMAIN_NAME}[[:space:]]*$|[[:space:]]+${DOMAIN_NAME}[[:space:]]+" /etc/hosts 2>/dev/null; then
+            print_info "Domain $DOMAIN_NAME exists with different IP - updating to $DC_IP"
+            sed -i "/[[:space:]]*${DOMAIN_NAME}[[:space:]]*$/d" /etc/hosts 2>/dev/null
+            sed -i "/[[:space:]]*${DOMAIN_NAME}[[:space:]]/d" /etc/hosts 2>/dev/null
+        fi
+        # Add new entry
+        echo "$DC_IP $DOMAIN_NAME" >> /etc/hosts
+    fi
+    
     # Also add short domain name if it's a .local or has a short name
     DOMAIN_SHORT=$(echo "$DOMAIN_NAME" | cut -d. -f1)
     if [[ "$DOMAIN_NAME" == *".local"* ]] || [[ -n "$DOMAIN_SHORT" ]]; then
-        echo "$DC_IP $DOMAIN_SHORT" >> /etc/hosts
+        # Check if short domain already exists with this IP
+        if domain_exists_with_ip "$DC_IP" "$DOMAIN_SHORT"; then
+            print_info "Short domain $DOMAIN_SHORT already exists in /etc/hosts with IP $DC_IP - skipping"
+        else
+            # Check if we already have a line with this IP, add short domain to it
+            if grep -qE "^[[:space:]]*${DC_IP}[[:space:]]" /etc/hosts 2>/dev/null; then
+                # Add short domain to existing line with same IP
+                sed -i "s|^\([[:space:]]*${DC_IP}[[:space:]]\+.*\)|\1 $DOMAIN_SHORT|" /etc/hosts 2>/dev/null
+            else
+                # Create new line
+                echo "$DC_IP $DOMAIN_SHORT" >> /etc/hosts
+            fi
+        fi
     fi
     
     print_info "✓ DNS and hosts file configured"
-    
-    # Configure NTP (critical for AD - must be done before domain join)
-    print_info "Configuring NTP for time synchronization..."
-    systemctl enable ntpd
-    systemctl start ntpd
-    timedatectl set-ntp true
-    sleep 2  # Give NTP a moment to sync
     
     # Test DNS resolution
     print_info "Testing DNS resolution for domain..."
@@ -618,118 +643,185 @@ function ad_Install {
         log_warning "DNS resolution test failed, but continuing with hosts file entry..."
     fi
     
-    # Install AUR packages (realmd and adcli) - must build as non-root user
-    print_info "Installing realmd and adcli from AUR (this may take a few minutes)..."
-    print_info "Note: AUR packages must be built as a non-root user"
+    # Extract domain components for configuration
+    # NetBIOS name is typically the first part of the domain (e.g., "lambdaSec" from "lambdaSec.local")
+    NETBIOS_NAME=$(echo "$DOMAIN_NAME" | cut -d. -f1 | tr '[:lower:]' '[:upper:]')
+    # Kerberos realm is the domain in uppercase
+    KERBEROS_REALM=$(echo "$DOMAIN_NAME" | tr '[:lower:]' '[:upper:]')
+    # Get DC hostname (first part of domain)
+    DC_HOSTNAME=$(echo "$DOMAIN_NAME" | cut -d. -f1)
     
+    print_info "Detected domain components:"
+    print_info "  NetBIOS name: $NETBIOS_NAME"
+    print_info "  Kerberos realm: $KERBEROS_REALM"
     
-    # Install realmd from AUR
-    print_info "Building realmd from AUR..."
-    if [[ -d "/home/$USERNAME/AUR/realmd" ]]; then
-        rm -rf /home/$USERNAME/AUR/realmd
-    fi
-    sudo -u $USERNAME git clone "https://aur.archlinux.org/realmd.git" /home/$USERNAME/AUR/realmd >/dev/null 2>&1
-    if [[ $? -eq 0 ]]; then
-        cd /home/$USERNAME/AUR/realmd
-        if sudo -u $USERNAME makepkg -si --noconfirm >/dev/null 2>&1; then
-            print_info "✓ realmd installed successfully"
-        else
-            log_error "Failed to build realmd from AUR"
-            cd -
-            return
-        fi
-        cd -
-    else
-        log_error "Failed to clone realmd from AUR"
-        return
-    fi
+    # Configure NTP (critical for AD - must be done before domain join)
+    print_info "Configuring NTP for time synchronization..."
+    # Create /etc/ntp.conf
+    cat > /etc/ntp.conf << EOF
+# Use domain controller as NTP server
+server $DC_HOSTNAME.$DOMAIN_NAME
+
+# Restrictions
+restrict default kod limited nomodify nopeer noquery notrap
+restrict 127.0.0.1
+restrict ::1
+
+# Location of drift file
+driftfile /var/lib/ntp/ntpd.drift
+EOF
+    systemctl enable ntpd
+    systemctl start ntpd
+    timedatectl set-ntp true
+    sleep 2  # Give NTP a moment to sync
     
-    # Install adcli from AUR
-    print_info "Building adcli from AUR..."
-    if [[ -d "/home/$USERNAME/AUR/adcli-git" ]]; then
-        rm -rf /home/$USERNAME/AUR/adcli-git
-    fi
-    sudo -u $USERNAME git clone "https://aur.archlinux.org/adcli-git.git" /home/$USERNAME/AUR/adcli-git >/dev/null 2>&1
-    if [[ $? -eq 0 ]]; then
-        cd /home/$USERNAME/AUR/adcli-git
-        if sudo -u $USERNAME makepkg -si --noconfirm >/dev/null 2>&1; then
-            print_info "✓ adcli installed successfully"
-        else
-            log_error "Failed to build adcli from AUR"
-            cd -
-            return
-        fi
-        cd -
-    else
-        log_error "Failed to clone adcli from AUR"
-        return
-    fi
+    # Configure Kerberos
+    print_info "Configuring Kerberos..."
+    cat > /etc/krb5.conf << EOF
+[libdefaults]
+   default_realm = $KERBEROS_REALM
+   dns_lookup_realm = false
+   dns_lookup_kdc = true
+
+[realms]
+   $KERBEROS_REALM = {
+      kdc = $DC_HOSTNAME.$DOMAIN_NAME
+      default_domain = $DOMAIN_NAME
+      admin_server = $DC_HOSTNAME.$DOMAIN_NAME
+   }
+   $NETBIOS_NAME = {
+      kdc = $DC_HOSTNAME.$DOMAIN_NAME
+      default_domain = $DOMAIN_NAME
+      admin_server = $DC_HOSTNAME.$DOMAIN_NAME
+   }
+
+[domain_realm]
+    .$DOMAIN_NAME = $KERBEROS_REALM
+
+[appdefaults]
+    pam = {
+        ticket_lifetime = 1d
+        renew_lifetime = 1d
+        forwardable = true
+        proxiable = false
+        minimum_uid = 1
+    }
+EOF
+    print_info "✓ Kerberos configured"
     
-    # Discover realm (now that DNS is configured)
-    print_info "Discovering realm information..."
-    if ! realm discover "$DOMAIN_NAME" >/dev/null 2>&1; then
-        log_warning "Realm discovery had issues, but continuing with manual join..."
-    else
-        print_info "✓ Realm discovery successful"
-    fi
+    # Configure Samba
+    print_info "Configuring Samba..."
+    cat > /etc/samba/smb.conf << EOF
+[global]
+   workgroup = $NETBIOS_NAME
+   security = ADS
+   realm = $KERBEROS_REALM
+
+   winbind refresh tickets = Yes
+   vfs objects = acl_xattr
+   map acl inherit = Yes
+   store dos attributes = Yes
+
+   # Allow a single, unified keytab to store obtained Kerberos tickets
+   dedicated keytab file = /etc/krb5.keytab
+   kerberos method = secrets and keytab
+
+   # Do not require that login usernames include the default domain
+   winbind use default domain = yes
+EOF
+    print_info "✓ Samba configured"
     
-    # Join domain
+    # Join domain using net ads join
     echo "-------------------------------------------------------------------------------------------------"
     print_info "Attempting to join domain: $DOMAIN_NAME"
     print_info "Domain Controller: $DC_IP"
+    print_info "NetBIOS name: $NETBIOS_NAME"
     print_info "This may take a moment..."
     echo "-------------------------------------------------------------------------------------------------"
     
-    # Use realm join with credentials
-    # Format username properly if not already formatted
+    # Format username properly for net ads join
     if [[ "$AD_USERNAME" != *"\\"* ]] && [[ "$AD_USERNAME" != *"@"* ]]; then
-        AD_USERNAME_FULL="$AD_USERNAME@$DOMAIN_NAME"
-    else
         AD_USERNAME_FULL="$AD_USERNAME"
+    else
+        # Remove domain prefix if present
+        AD_USERNAME_FULL=$(echo "$AD_USERNAME" | sed 's/.*\\//' | sed 's/@.*//')
     fi
     
-    # Join domain using realm
-    if echo "$AD_PASSWORD" | realm join --user="$AD_USERNAME_FULL" "$DOMAIN_NAME" --unattended; then
+    # Join domain using net ads join
+    if echo "$AD_PASSWORD" | net ads join -U "$AD_USERNAME_FULL"; then
         print_info "✓ Successfully joined domain: $DOMAIN_NAME"
         
-        # Configure SSSD
-        print_info "Configuring SSSD..."
-        systemctl enable sssd
-        systemctl start sssd
-        
-        # Configure Samba
-        print_info "Configuring Samba for AD integration..."
+        # Start Samba services
+        print_info "Starting Samba services..."
         systemctl enable smb
         systemctl enable nmb
+        systemctl enable winbind
         systemctl start smb
         systemctl start nmb
+        systemctl start winbind
         
-        # Update nsswitch.conf for AD authentication
+        # Update nsswitch.conf for AD authentication (using winbind, not sss)
         print_info "Updating nsswitch.conf for AD authentication..."
-        if ! grep -q "sss" /etc/nsswitch.conf; then
-            sed -i 's/^passwd:.*/passwd: files sss/' /etc/nsswitch.conf
-            sed -i 's/^group:.*/group: files sss/' /etc/nsswitch.conf
-            sed -i 's/^shadow:.*/shadow: files sss/' /etc/nsswitch.conf
+        # Backup nsswitch.conf
+        cp /etc/nsswitch.conf /etc/nsswitch.conf.backup
+        
+        # Update passwd and group lines
+        if ! grep -q "winbind" /etc/nsswitch.conf; then
+            sed -i 's/^passwd:.*/passwd: files winbind mymachines systemd/' /etc/nsswitch.conf
+            sed -i 's/^group:.*/group: files winbind mymachines systemd/' /etc/nsswitch.conf
         fi
         
-        # Configure sudoers for domain admins (optional)
-        print_info "Configuring sudo access for Domain Admins..."
-        if ! grep -q "%Domain Admins" /etc/sudoers.d/domain_admins 2>/dev/null; then
-            echo "%Domain\\ Admins ALL=(ALL) ALL" > /etc/sudoers.d/domain_admins
-            chmod 440 /etc/sudoers.d/domain_admins
+        # Configure PAM for winbind
+        print_info "Configuring PAM for winbind authentication..."
+        mkdir -p /etc/security
+        cat > /etc/security/pam_winbind.conf << EOF
+[Global]
+   debug = no
+   debug_state = no
+   try_first_pass = yes
+   krb5_auth = yes
+   krb5_ccache_type = FILE:/run/user/%u/krb5cc
+   cached_login = yes
+   silent = no
+   mkhomedir = yes
+EOF
+        
+        # Backup and update system-auth
+        if [[ -f /etc/pam.d/system-auth ]]; then
+            cp /etc/pam.d/system-auth /etc/pam.d/system-auth.backup
+            # Note: Full PAM configuration is complex, user may need to configure manually
+            # We'll add a basic winbind entry
+            if ! grep -q "pam_winbind.so" /etc/pam.d/system-auth; then
+                # Add winbind to auth section (after systemd_home if present)
+                sed -i '/pam_systemd_home.so/a auth       [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
+                # Add winbind to account section
+                sed -i '/^account.*pam_systemd_home.so/a account    [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
+                # Add winbind to password section
+                sed -i '/^password.*pam_systemd_home.so/a password   [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
+                # Add winbind to session section
+                sed -i '/^session.*pam_systemd_home.so/a session    required                    pam_winbind.so' /etc/pam.d/system-auth
+            fi
         fi
         
         # Test authentication
-        print_info "Testing domain authentication..."
-        if id "$AD_USERNAME_FULL" >/dev/null 2>&1; then
-            print_info "✓ Domain authentication test successful"
+        print_info "Testing domain connectivity..."
+        if wbinfo -u >/dev/null 2>&1; then
+            print_info "✓ Domain connectivity test successful"
+            print_info "Domain users available:"
+            wbinfo -u | head -n 5
         else
-            log_warning "Domain authentication test had issues, but domain join completed"
+            log_warning "Domain connectivity test had issues, but domain join completed"
+        fi
+        
+        if wbinfo -g >/dev/null 2>&1; then
+            print_info "Domain groups available:"
+            wbinfo -g | head -n 5
         fi
         
         log_success "Active Directory domain join completed successfully!"
-        print_info "Domain users can now log in using: username@$DOMAIN_NAME"
+        print_info "Domain users can now log in using: $NETBIOS_NAME\\\\username or username@$DOMAIN_NAME"
         print_info "You may need to reboot for all changes to take effect"
+        print_info "Note: Full PAM configuration may require manual adjustment"
         
     else
         log_error "Failed to join domain: $DOMAIN_NAME"
@@ -740,11 +832,12 @@ function ad_Install {
         log_error "  - Account has permissions to join computers to the domain"
         log_error "  - Network connectivity to domain controller"
         log_error "  - Time synchronization (NTP) is working"
+        log_error "  - DNS resolution is working"
         
         # Cleanup on failure
         print_info "Cleaning up failed configuration..."
-        systemctl stop sssd 2>/dev/null
-        systemctl disable sssd 2>/dev/null
+        systemctl stop smb nmb winbind 2>/dev/null
+        systemctl disable smb nmb winbind 2>/dev/null
         
         # Restore DNS if we modified it
         if [[ -f "/etc/resolv.conf.backup" ]]; then
