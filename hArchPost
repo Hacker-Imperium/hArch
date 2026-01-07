@@ -671,9 +671,9 @@ restrict ::1
 driftfile /var/lib/ntp/ntpd.drift
 EOF
     systemctl enable ntpd
-    systemctl start ntpd
-    timedatectl set-ntp true
-    sleep 2  # Give NTP a moment to sync
+    # Note: Cannot start services in chroot - will start on first boot
+    print_info "NTP service enabled - will start automatically on first boot"
+    print_info "Time synchronization will be configured on first boot"
     
     # Configure Kerberos
     print_info "Configuring Kerberos..."
@@ -731,50 +731,28 @@ EOF
 EOF
     print_info "✓ Samba configured"
     
-    # Join domain using net ads join
-    echo "-------------------------------------------------------------------------------------------------"
-    print_info "Attempting to join domain: $DOMAIN_NAME"
-    print_info "Domain Controller: $DC_IP"
-    print_info "NetBIOS name: $NETBIOS_NAME"
-    print_info "This may take a moment..."
-    echo "-------------------------------------------------------------------------------------------------"
+    # Enable Samba services (will start on first boot)
+    print_info "Enabling Samba services..."
+    systemctl enable smb
+    systemctl enable nmb
+    systemctl enable winbind
+    print_info "Samba services enabled - will start automatically on first boot"
     
-    # Format username properly for net ads join
-    if [[ "$AD_USERNAME" != *"\\"* ]] && [[ "$AD_USERNAME" != *"@"* ]]; then
-        AD_USERNAME_FULL="$AD_USERNAME"
-    else
-        # Remove domain prefix if present
-        AD_USERNAME_FULL=$(echo "$AD_USERNAME" | sed 's/.*\\//' | sed 's/@.*//')
+    # Update nsswitch.conf for AD authentication (using winbind, not sss)
+    print_info "Updating nsswitch.conf for AD authentication..."
+    # Backup nsswitch.conf
+    cp /etc/nsswitch.conf /etc/nsswitch.conf.backup
+    
+    # Update passwd and group lines
+    if ! grep -q "winbind" /etc/nsswitch.conf; then
+        sed -i 's/^passwd:.*/passwd: files winbind mymachines systemd/' /etc/nsswitch.conf
+        sed -i 's/^group:.*/group: files winbind mymachines systemd/' /etc/nsswitch.conf
     fi
     
-    # Join domain using net ads join
-    if echo "$AD_PASSWORD" | net ads join -U "$AD_USERNAME_FULL"; then
-        print_info "✓ Successfully joined domain: $DOMAIN_NAME"
-        
-        # Start Samba services
-        print_info "Starting Samba services..."
-        systemctl enable smb
-        systemctl enable nmb
-        systemctl enable winbind
-        systemctl start smb
-        systemctl start nmb
-        systemctl start winbind
-        
-        # Update nsswitch.conf for AD authentication (using winbind, not sss)
-        print_info "Updating nsswitch.conf for AD authentication..."
-        # Backup nsswitch.conf
-        cp /etc/nsswitch.conf /etc/nsswitch.conf.backup
-        
-        # Update passwd and group lines
-        if ! grep -q "winbind" /etc/nsswitch.conf; then
-            sed -i 's/^passwd:.*/passwd: files winbind mymachines systemd/' /etc/nsswitch.conf
-            sed -i 's/^group:.*/group: files winbind mymachines systemd/' /etc/nsswitch.conf
-        fi
-        
-        # Configure PAM for winbind
-        print_info "Configuring PAM for winbind authentication..."
-        mkdir -p /etc/security
-        cat > /etc/security/pam_winbind.conf << EOF
+    # Configure PAM for winbind
+    print_info "Configuring PAM for winbind authentication..."
+    mkdir -p /etc/security
+    cat > /etc/security/pam_winbind.conf << EOF
 [Global]
    debug = no
    debug_state = no
@@ -785,65 +763,43 @@ EOF
    silent = no
    mkhomedir = yes
 EOF
-        
-        # Backup and update system-auth
-        if [[ -f /etc/pam.d/system-auth ]]; then
-            cp /etc/pam.d/system-auth /etc/pam.d/system-auth.backup
-            # Note: Full PAM configuration is complex, user may need to configure manually
-            # We'll add a basic winbind entry
-            if ! grep -q "pam_winbind.so" /etc/pam.d/system-auth; then
-                # Add winbind to auth section (after systemd_home if present)
-                sed -i '/pam_systemd_home.so/a auth       [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
-                # Add winbind to account section
-                sed -i '/^account.*pam_systemd_home.so/a account    [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
-                # Add winbind to password section
-                sed -i '/^password.*pam_systemd_home.so/a password   [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
-                # Add winbind to session section
-                sed -i '/^session.*pam_systemd_home.so/a session    required                    pam_winbind.so' /etc/pam.d/system-auth
-            fi
-        fi
-        
-        # Test authentication
-        print_info "Testing domain connectivity..."
-        if wbinfo -u >/dev/null 2>&1; then
-            print_info "✓ Domain connectivity test successful"
-            print_info "Domain users available:"
-            wbinfo -u | head -n 5
-        else
-            log_warning "Domain connectivity test had issues, but domain join completed"
-        fi
-        
-        if wbinfo -g >/dev/null 2>&1; then
-            print_info "Domain groups available:"
-            wbinfo -g | head -n 5
-        fi
-        
-        log_success "Active Directory domain join completed successfully!"
-        print_info "Domain users can now log in using: $NETBIOS_NAME\\\\username or username@$DOMAIN_NAME"
-        print_info "You may need to reboot for all changes to take effect"
-        print_info "Note: Full PAM configuration may require manual adjustment"
-        
-    else
-        log_error "Failed to join domain: $DOMAIN_NAME"
-        log_error "Please verify:"
-        log_error "  - Domain name is correct"
-        log_error "  - Domain controller IP ($DC_IP) is correct and reachable"
-        log_error "  - Username and password are correct"
-        log_error "  - Account has permissions to join computers to the domain"
-        log_error "  - Network connectivity to domain controller"
-        log_error "  - Time synchronization (NTP) is working"
-        log_error "  - DNS resolution is working"
-        
-        # Cleanup on failure
-        print_info "Cleaning up failed configuration..."
-        systemctl stop smb nmb winbind 2>/dev/null
-        systemctl disable smb nmb winbind 2>/dev/null
-        
-        # Restore DNS if we modified it
-        if [[ -f "/etc/resolv.conf.backup" ]]; then
-            mv /etc/resolv.conf.backup /etc/resolv.conf
+    
+    # Backup and update system-auth
+    if [[ -f /etc/pam.d/system-auth ]]; then
+        cp /etc/pam.d/system-auth /etc/pam.d/system-auth.backup
+        # Note: Full PAM configuration is complex, user may need to configure manually
+        # We'll add a basic winbind entry
+        if ! grep -q "pam_winbind.so" /etc/pam.d/system-auth; then
+            # Add winbind to auth section (after systemd_home if present)
+            sed -i '/pam_systemd_home.so/a auth       [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
+            # Add winbind to account section
+            sed -i '/^account.*pam_systemd_home.so/a account    [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
+            # Add winbind to password section
+            sed -i '/^password.*pam_systemd_home.so/a password   [success=1 default=ignore]  pam_winbind.so' /etc/pam.d/system-auth
+            # Add winbind to session section
+            sed -i '/^session.*pam_systemd_home.so/a session    required                    pam_winbind.so' /etc/pam.d/system-auth
         fi
     fi
+    
+    # Note: Domain join cannot be performed in chroot (services must be running)
+    # Configuration is complete - use 'join-AD' function after first boot
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "✓ Active Directory configuration complete"
+    print_info "All configuration files have been set up:"
+    print_info "  - DNS configured in /etc/resolv.conf and /etc/hosts"
+    print_info "  - NTP configured in /etc/ntp.conf"
+    print_info "  - Kerberos configured in /etc/krb5.conf"
+    print_info "  - Samba configured in /etc/samba/smb.conf"
+    print_info "  - NSS configured in /etc/nsswitch.conf"
+    print_info "  - PAM configured in /etc/security/pam_winbind.conf and /etc/pam.d/system-auth"
+    print_info ""
+    print_info "Services enabled (will start on first boot):"
+    print_info "  - ntpd (NTP time synchronization)"
+    print_info "  - smb, nmb, winbind (Samba/AD services)"
+    print_info ""
+    print_info "After first boot, run 'join-AD' to join the domain"
+    print_info "Note: Domain join requires services to be running (cannot be done in chroot)"
+    echo "-------------------------------------------------------------------------------------------------"
     
     # Clear password from memory
     unset AD_PASSWORD
