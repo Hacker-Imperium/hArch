@@ -136,7 +136,7 @@ function desktop_Env {
     sleep 3
     echo "----------------------------------------------------------------------------------------------------------"
     print_info "Downloading MATE desktop configuration... Efficient for low spec systems, change as you see fit"
-    if curl -O $GITHUB/hArch/blob/main/conf/linux-vs-windows.jpg >/dev/null 2>&1; then
+    if curl -O $GITHUB/hArch/refs/heads/main/conf/linux-vs-windows.jpg >/dev/null 2>&1; then
         if mv /linux-vs-windows.jpg /usr/share/backgrounds/mate/desktop/linux-vs-windows.jpg; then
             print_info "✓ Desktop background downloaded and installed"
         else
@@ -147,7 +147,14 @@ function desktop_Env {
     fi
     
     if curl -O $GITHUB/hArch/refs/heads/main/conf/MateConfig >/dev/null 2>&1; then
-        print_info "✓ MATE configuration downloaded"
+        # Move MateConfig to user's fish config directory
+        mkdir -p /home/$USERNAME/.config/fish
+        if mv /MateConfig /home/$USERNAME/.config/fish/MateConfig; then
+            chown -R $USERNAME:$USERNAME /home/$USERNAME/.config/fish
+            print_info "✓ MATE configuration downloaded and installed to ~/.config/fish/MateConfig"
+        else
+            log_error "Failed to move MateConfig to user directory"
+        fi
     else
         log_error "Failed to download MATE configuration"
     fi
@@ -548,24 +555,6 @@ function ad_Install {
     fi
     
     echo "-------------------------------------------------------------------------------------------------"
-    print_info "Domain Join Credentials"
-    echo "Note: The account must have permissions to join computers to the domain"
-    echo "-------------------------------------------------------------------------------------------------"
-    read -p "Enter AD username (e.g., administrator or DOMAIN\\username): " AD_USERNAME
-    if [[ -z "$AD_USERNAME" ]]; then
-        log_error "Username is required. Skipping AD join..."
-        return
-    fi
-    
-    read -sp "Enter AD password: " AD_PASSWORD
-    echo ""
-    
-    if [[ -z "$AD_PASSWORD" ]]; then
-        log_error "Password is required. Skipping AD join..."
-        return
-    fi
-    
-    echo "-------------------------------------------------------------------------------------------------"
     print_info "Installing Active Directory components..."
     echo "-------------------------------------------------------------------------------------------------"
     
@@ -800,9 +789,6 @@ EOF
     print_info "After first boot, run 'join-AD' to join the domain"
     print_info "Note: Domain join requires services to be running (cannot be done in chroot)"
     echo "-------------------------------------------------------------------------------------------------"
-    
-    # Clear password from memory
-    unset AD_PASSWORD
     
     echo "-------------------------------------------------------------------------------------------------"
     sleep 3
