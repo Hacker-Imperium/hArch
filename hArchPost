@@ -717,6 +717,20 @@ EOF
 
    # Do not require that login usernames include the default domain
    winbind use default domain = yes
+   
+   # Winbind settings for proper domain user/group mapping
+   winbind enum users = yes
+   winbind enum groups = yes
+   winbind nested groups = yes
+   winbind offline logon = yes
+   
+   # ID mapping configuration (required for winbind to map domain SIDs to UIDs/GIDs)
+   idmap config * : backend = tdb
+   idmap config * : range = 10000-99999
+   
+   # Template settings for domain users/groups
+   template homedir = /home/%U
+   template shell = /bin/bash
 EOF
     print_info "✓ Samba configured"
     
