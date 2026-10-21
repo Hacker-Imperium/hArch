@@ -50,7 +50,6 @@ function slear {
 
 function greeter {
     slear
-	echo -e "${PURPLE}Hackers Arch Installer${RESET}"
 	echo ${NEWLINE}
 	echo ${NEWLINE}
     echo "-------------------------------------------------------------------------------------------------"
@@ -70,6 +69,7 @@ function greeter {
 	echo -e "${RESET}"
 	echo ${NEWLINE}
 	echo ${NEWLINE}
+    echo -e "${PURPLE}Hackers Arch Installer${RESET}"
     echo "-------------------------------------------------------------------------------------------------"
 }
 
