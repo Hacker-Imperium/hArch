@@ -6,7 +6,7 @@
 # Author    : Binary-Brawler                                     |
 # Github    : github.com/Hacker-Imperium                         |
 # LinkedIn  : linkedin.com/in/brandon-walker-0b0542116/          |
-# Version   : 1.1.4                                              |
+# Version   : 1.2.0                                              |
 # Intent    : Post install script for hArch                      |
 # ---------------------------------------------------------------
 #                  Function - Purpose                            |
@@ -81,6 +81,31 @@ function collect_Inputs {
     print_info "System Configuration:"
     read -p "Enter Hostname: " HOSTNAME
     echo "-------------------------------------------------------------------------------------------------"
+
+    # Timezone
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Timezone (example: America/Chicago)"
+    while true; do
+        read -p "Enter Timezone: " TIMEZONE
+        if [[ -n "$TIMEZONE" && "$TIMEZONE" != *..* && -f "/usr/share/zoneinfo/$TIMEZONE" ]]; then
+            break
+        fi
+        log_error "Unknown timezone: $TIMEZONE"
+    done
+    echo "-------------------------------------------------------------------------------------------------"
+
+    # Locale
+    echo "-------------------------------------------------------------------------------------------------"
+    print_info "Locale (example: en_US.UTF-8)"
+    while true; do
+        read -p "Enter Locale [en_US.UTF-8]: " LOCALE
+        LOCALE=${LOCALE:-en_US.UTF-8}
+        if grep -qxF "#${LOCALE} UTF-8" /etc/locale.gen 2>/dev/null || grep -qxF "${LOCALE} UTF-8" /etc/locale.gen 2>/dev/null; then
+            break
+        fi
+        log_error "Locale not found in /etc/locale.gen: $LOCALE"
+    done
+    echo "-------------------------------------------------------------------------------------------------"
     # User account
     echo "-------------------------------------------------------------------------------------------------"
     print_info "User Account Setup:"
@@ -121,11 +146,27 @@ function installer {
     echo "-------------------------------------------------------"
     print_info "Setting hostname to $HOSTNAME..."
     echo $HOSTNAME > /etc/hostname
+
+    print_info "Setting timezone to $TIMEZONE..."
+    ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
+    hwclock --systohc
+
+    print_info "Generating locale $LOCALE..."
+    sed -i "s/^#${LOCALE} UTF-8/${LOCALE} UTF-8/" /etc/locale.gen
+    locale-gen
+    echo "LANG=$LOCALE" > /etc/locale.conf
+
+    print_info "Writing /etc/hosts..."
+    cat > /etc/hosts << EOF
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   ${HOSTNAME}.localdomain ${HOSTNAME}
+EOF
+
     slear
     echo  "----------------------------------------------------"
     print_info "Installing useful packages... Grab a coffee!" 
-    pacman -S dkms linux-headers mlocate git cmake fastfetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf fish remmina dconf-editor rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm >/dev/null 2>&1
-    hwclock --systohc
+    pacman -S sudo dkms linux-headers mlocate git cmake fastfetch tree firefox samba cherrytree lsof flameshot net-tools dnsutils dconf fish remmina dconf-editor rxvt-unicode ranger rofi dmenu terminator chromium --noconfirm >/dev/null 2>&1
 }
 
 function desktop_Env {
@@ -168,7 +209,7 @@ function dev_Setup {
         print_info "Setting up a coding env... This may take awhile"
         echo "-------------------------------------------------------"
         print_info "Downloading vim configuration..."
-        if curl -O $GITHUB/hArch/refs/heads/main/vimrc_bundle_conf >/dev/null 2>&1; then
+        if curl -O $GITHUB/hArch/refs/heads/main/conf/vimrc_bundle_conf >/dev/null 2>&1; then
             if mv vimrc_bundle_conf /home/$USERNAME/.vimrc; then
                 print_info "✓ vim configuration installed"
             else
@@ -199,7 +240,24 @@ function dev_Setup {
         echo "  • Python virtual environments (venv support via pip)"
         echo "-----------------------------------------------------------------"
         sleep 2
-        pacman -S jdk-openjdk python-pip rustup go nodejs npm python3 code neovim gimp audacity wireshark-qt vlc btop virtualbox postman docker pycharm-community-edition intellij-idea-community-edition --noconfirm >/dev/null 2>&1 
+        print_info "Installing coding packages. This can take a while."
+        local dev_packages=(
+            jdk-openjdk python-pip rustup go nodejs npm python3 code neovim
+            gimp audacity wireshark-qt vlc btop virtualbox docker
+            pycharm-community-edition intellij-idea-community-edition
+        )
+        local failed_log="/var/log/harch-failed-packages.log"
+        mkdir -p /var/log
+        if ! pacman -S --needed --noconfirm "${dev_packages[@]}"; then
+            log_warning "Coding package install failed. Retrying one by one."
+            local pkg
+            for pkg in "${dev_packages[@]}"; do
+                if ! pacman -S --needed --noconfirm "$pkg"; then
+                    log_error "Failed to install: $pkg"
+                    echo "dev_Setup $pkg" >> "$failed_log"
+                fi
+            done
+        fi 
     else
         log_warning "Do you know where the term Script Kiddie comes from?"
         slear
@@ -212,7 +270,6 @@ function vid_Driver {
     print_info "Gathering Graphics info..."
     sleep 2
     str=$(lspci -vmm | grep VGA -A6)
-    user=$USERNAME
     
     # Define driver packages
     AMD='AMD'
@@ -223,7 +280,7 @@ function vid_Driver {
     Fermi='nvidia-390xx-utils'
     Tesla='nvidia-340xx-utils'
     
-    case $str in
+    case "$str" in
         *"$AMD"*)
             print_info "Installing AMD Drivers..."
             echo "------------------------------------"
@@ -254,12 +311,18 @@ function vid_Driver {
                 pacman -S "$driver" nvidia-settings nvidia-utils glxinfo nvtop --noconfirm >/dev/null
             else
                 pacman -S nvidia-settings glxinfo nvtop --noconfirm >/dev/null
-                git clone "https://aur.archlinux.org/$driver.git" /tmp/$driver
-                cd /tmp/$driver
-                su $user
-                makepkg -si --noconfirm
-                cd -
-                #rm -rf /tmp/$driver
+                local build_dir="/home/$USERNAME/AUR/$driver"
+                mkdir -p "/home/$USERNAME/AUR"
+                if git clone "https://aur.archlinux.org/$driver.git" "$build_dir"; then
+                    chown -R "$USERNAME:$USERNAME" "$build_dir"
+                    if ( cd "$build_dir" && runuser -u "$USERNAME" -- makepkg -si --noconfirm ); then
+                        print_info "✓ Built $driver"
+                    else
+                        log_error "makepkg failed for $driver. Continuing."
+                    fi
+                else
+                    log_error "Failed to clone $driver from the AUR. Continuing."
+                fi
             fi
 
             print_info "Downloading NVIDIA configuration files..."
@@ -279,6 +342,31 @@ function vid_Driver {
             print_info "Attempting to force composition..."
             print_info "[!] Usually fixes screen tearing w/ Nvidia drivers..."
             #bash -c "nvidia-settings --assign CurrentMetaMode=\"$(nvidia-settings -q CurrentMetaMode -t | sed 's/"/\\"/g; s/}/, ForceCompositionPipeline = On}/')\""
+            ;;
+        *Intel*)
+            print_info "Installing Intel graphics (kernel modesetting)..."
+            echo "------------------------------------"
+            pacman -S mesa --noconfirm >/dev/null || log_error "Failed to install mesa. Continuing."
+            ;;
+        *VirtualBox*|*InnoTek*)
+            print_info "Installing VirtualBox guest utilities..."
+            echo "------------------------------------"
+            pacman -S virtualbox-guest-utils --noconfirm >/dev/null || log_error "Failed to install virtualbox-guest-utils. Continuing."
+            ;;
+        *VMware*)
+            print_info "Installing VMware guest utilities..."
+            echo "------------------------------------"
+            pacman -S open-vm-tools mesa xf86-video-vmware --noconfirm >/dev/null || log_error "Failed to install VMware guest packages. Continuing."
+            ;;
+        *Hyper-V*|*"Microsoft Corporation"*)
+            print_info "Installing Hyper-V graphics support..."
+            echo "------------------------------------"
+            pacman -S mesa --noconfirm >/dev/null || log_error "Failed to install mesa. Continuing."
+            ;;
+        *QEMU*|*Virtio*|*"Red Hat"*)
+            print_info "Installing QEMU guest utilities..."
+            echo "------------------------------------"
+            pacman -S mesa qemu-guest-agent --noconfirm >/dev/null || log_error "Failed to install QEMU guest packages. Continuing."
             ;;
         *)
             print_info "Unable to determine Graphics info.. Installing default drivers"
@@ -440,9 +528,10 @@ function hack_Tools {
     echo "  [4] Pwn           - Exploitation and reverse engineering (ghidra, pwntools, etc.)"
     echo "  [5] Wireless      - Wireless security tools (aircrack-ng, kismet, reaver, etc.)"
     echo "  [6] OSINT         - Open source intelligence (theharvester, recon-ng, maltego, etc.)"
-    echo "  [7] Mobile        - Mobile security tools (apktool, frida, drozer, etc.)"
+    echo "  [7] Mobile        - Mobile security tools (frida, jadx, drozer, etc.)"
     echo "  [8] Malware       - Malware analysis tools (volatility3, yara, cuckoo, etc.)"
     echo "  [9] Master        - All tools combined (everything above)"
+    echo "  [10] C2           - C2 and social engineering (empire, sliver, powersploit, blackeye)"
     echo ""
     echo "You can select multiple categories by entering numbers separated by commas"
     echo "Example: 1,3,4 or 2,5,7"
@@ -471,6 +560,7 @@ function hack_Tools {
         ["7"]="Mobile"
         ["8"]="Malware"
         ["9"]="Master"
+        ["10"]="C2"
     )
     
     # Track what we're installing
@@ -496,15 +586,49 @@ function hack_Tools {
     print_info "Installing selected tool categories..."
     echo "---------------------------------------------------------------"
     
+    local failed_log="/var/log/harch-failed-packages.log"
+    local -a known=()
+    local -a missing=()
+    local pkg one
+    mkdir -p /var/log
+    : > "$failed_log"
+
     for tool_category in "${tools_to_install[@]}"; do
         print_info "Installing $tool_category tools..."
-        if curl -O "$GITHUB/hArch/refs/heads/main/Tools/$tool_category" >/dev/null 2>&1; then
-            if [[ -f "/$tool_category" ]]; then
-                pacman -S - < "/$tool_category" --noconfirm
-                rm "/$tool_category"
+        if curl -fsSL -o "/$tool_category" "$GITHUB/hArch/refs/heads/main/Tools/$tool_category" && [[ -f "/$tool_category" ]]; then
+            known=()
+            missing=()
+            while IFS= read -r pkg || [[ -n "$pkg" ]]; do
+                pkg="${pkg%%#*}"
+                pkg="${pkg#"${pkg%%[![:space:]]*}"}"
+                pkg="${pkg%"${pkg##*[![:space:]]}"}"
+                [[ -z "$pkg" ]] && continue
+                if pacman -Si "$pkg" >/dev/null 2>&1; then
+                    known+=("$pkg")
+                else
+                    log_error "Package not available: $pkg"
+                    missing+=("$pkg")
+                    echo "$tool_category $pkg" >> "$failed_log"
+                fi
+            done < "/$tool_category"
+
+            if [[ ${#known[@]} -gt 0 ]]; then
+                if ! pacman -S --needed --noconfirm "${known[@]}"; then
+                    log_warning "Batch install failed for $tool_category. Retrying packages one by one."
+                    for one in "${known[@]}"; do
+                        if ! pacman -S --needed --noconfirm "$one"; then
+                            log_error "Failed to install: $one"
+                            echo "$tool_category $one" >> "$failed_log"
+                        fi
+                    done
+                fi
+            fi
+
+            rm -f "/$tool_category"
+            if [[ ${#missing[@]} -eq 0 ]]; then
                 print_info "✓ $tool_category tools installed"
             else
-                log_error "Failed to download $tool_category tool list"
+                log_warning "$tool_category finished with ${#missing[@]} unavailable package(s). See $failed_log"
             fi
         else
             log_error "Failed to download $tool_category from GitHub"
@@ -811,6 +935,17 @@ EOF
 
 function complete {
     slear
+    print_info "Installing hArch wordlists..."
+    mkdir -p /usr/share/wordlists/harch
+    local wordlist
+    for wordlist in common_dir fuzzUpload Metasploit_small SQLiDetect; do
+        if curl -fsSL -o "/usr/share/wordlists/harch/$wordlist" \
+            "$GITHUB/hArch/refs/heads/main/Wordlists/$wordlist"; then
+            print_info "✓ $wordlist"
+        else
+            log_error "Failed to download wordlist $wordlist. Continuing."
+        fi
+    done
     echo "-------------------------------------------------------------------------------------------------"
     fastfetch
     echo "-------------------------------------------------------------------------------------------------"
@@ -823,7 +958,7 @@ function complete {
     log_warning "1: exit"
     log_warning "2: umount -a"
     log_warning "3: reboot"
-    unset ROOT_PASSWORD USER_PASSWORD HOSTNAME USERNAME
+    unset ROOT_PASSWORD USER_PASSWORD HOSTNAME USERNAME TIMEZONE LOCALE
     rm /hArchPost
     exit
 }

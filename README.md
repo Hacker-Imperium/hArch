@@ -1,5 +1,5 @@
 # hArch {Hackers Arch} / sArch {Servers Arch}
-Version 1.1.4
+Version 1.2.0
 
 ![hArch](https://github.com/Binary-Brawler/hArch/assets/132982785/8000c3cd-1d2e-4377-91f3-2fec7cb800c2)
 
@@ -46,7 +46,7 @@ ________________________________________________________________________________
 
 To install, boot into Arch live ISO and:
   
-    1. curl -O https://raw.githubusercontent.com/Binary-Brawler/hArch/refs/heads/main/hArch
+    1. curl -O https://raw.githubusercontent.com/Hacker-Imperium/hArch/refs/heads/main/hArch
     2. chmod +x hArch
     3. ./hArch
     * Some systems show a bad meterpreter if so run: sed -i -e 's/\r$//' hArch 

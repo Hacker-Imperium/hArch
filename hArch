@@ -7,7 +7,7 @@
 # Github    : github.com/Hacker-Imperium                         |
 # LinkedIn  : linkedin.com/in/brandon-walker-0b0542116/          |
 # Discord   : https://discord.gg/MQbvMhSSMq                      |
-# Version   : 1.1.4                                              |
+# Version   : 1.2.0                                              |
 # Intent    : Simplistic Linux box for Red Teaming/Pentesting    |
 #               - BlackArch Repo (Access to tools)               |
 #               - Lightwieght distro for older machines          |
@@ -120,36 +120,52 @@ function update_Keyring {
 function check_Net {
     echo "---------------------------------------"
     print_info "Checking Internet Connection..."
-    
+
+    local speed=""
+    local speedtest_ok=true
+
     if ! command -v speedtest-cli &>/dev/null; then
         print_info "speedtest-cli is not installed. Installing..."
-        pacman -Sy >/dev/null
-        python3 -m venv speedTest
-        source speedTest/bin/activate
-        pip install speedtest-cli >/dev/null 2>&1
-        deactivate
+        if ! pacman -Sy >/dev/null 2>&1 \
+            || ! python3 -m venv speedTest >/dev/null 2>&1 \
+            || ! speedTest/bin/pip install speedtest-cli >/dev/null 2>&1; then
+            speedtest_ok=false
+        fi
     fi
-    
-    print_info "Calculating Internet Speed..."
-    sleep 1
-    
-    # Use the venv's speedtest-cli if it exists, otherwise use system one
-    if [[ -f "speedTest/bin/speedtest-cli" ]] || [[ -f "speedTest/bin/speedtest" ]]; then
-        # Activate venv and run speedtest-cli
-        source speedTest/bin/activate
-        local speed=$(speedtest-cli --simple 2>/dev/null | awk '/^Download:/ {print $2}')
-        deactivate
-    elif command -v speedtest-cli &>/dev/null; then
-        local speed=$(speedtest-cli --simple 2>/dev/null | awk '/^Download:/ {print $2}')
-    else
-        log_error "speedtest-cli not found and installation failed"
-        return 1
+
+    if [[ "$speedtest_ok" == true ]]; then
+        print_info "Calculating Internet Speed..."
+        sleep 1
+
+        # Use the venv's speedtest-cli if it exists, otherwise use system one
+        if [[ -f "speedTest/bin/speedtest-cli" ]] || [[ -f "speedTest/bin/speedtest" ]]; then
+            # shellcheck disable=SC1091
+            source speedTest/bin/activate
+            speed=$(speedtest-cli --simple 2>/dev/null | awk '/^Download:/ {print $2}')
+            deactivate
+        elif command -v speedtest-cli &>/dev/null; then
+            speed=$(speedtest-cli --simple 2>/dev/null | awk '/^Download:/ {print $2}')
+        else
+            speedtest_ok=false
+        fi
     fi
-    
+
+    if [[ "$speedtest_ok" != true || -z "$speed" || ! "$speed" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        log_warning "Speed test failed. Continuing with parallel downloads disabled."
+        echo "false" > enable_parallel.txt
+        return 0
+    fi
+
     sleep 1
     echo "------------------------------------"
     print_info "Download Speed: $speed Mbps"
     echo "------------------------------------"
+
+    if ! command -v bc &>/dev/null; then
+        log_warning "bc is not available. Continuing with parallel downloads disabled."
+        echo "false" > enable_parallel.txt
+        return 0
+    fi
 
     if (( $(echo "$speed > 50" | bc -l) )); then
         print_info "Enabling Parallel Downloads..."
@@ -162,27 +178,63 @@ function check_Net {
 }
 
 # Calculate Swap Size Based on System RAM
-# Improve this...
 function calculate_Swap_Size {
-    local ram_gb=$(free -g | awk '/^Mem:/{print $2}')
+    local ram_mb
+    ram_mb=$(free -m | awk '/^Mem:/{print $2}')
     local swap_size="2G"
 
-    if [[ ! $ram_gb =~ ^[0-9]+$ ]]; then
-        log_error "Error: Could not determine RAM size." >&2
-        exit 1
+    if [[ ! $ram_mb =~ ^[0-9]+$ || $ram_mb -eq 0 ]]; then
+        log_warning "Could not read RAM. Defaulting swap to 2G." >&2
+        echo "$swap_size"
+        return
     fi
 
-    if ((ram_gb < 2)); then
-        swap_size="${ram_gb}"
-    elif ((ram_gb < 4)); then
+    if (( ram_mb < 2048 )); then
+        local ram_gb=$(( (ram_mb + 1023) / 1024 ))
+        (( ram_gb < 1 )) && ram_gb=1
+        swap_size="${ram_gb}G"
+    elif (( ram_mb < 4096 )); then
         swap_size="3G"
-    elif ((ram_gb < 16)); then
+    elif (( ram_mb < 16384 )); then
         swap_size="4G"
     else
         swap_size="8G"
     fi
 
     echo "$swap_size"
+}
+
+# Show the disk and require the operator to retype its path before any write.
+function confirm_Drive {
+    local drive="$1"
+
+    echo "-------------------------------------------------------------------------------------------------"
+    if [[ -z "$drive" || ! -b "$drive" ]]; then
+        log_error "$drive is not a block device. Nothing was written."
+        return 1
+    fi
+
+    local dev_type
+    dev_type=$(lsblk -ndo TYPE "$drive" 2>/dev/null | head -n1)
+    if [[ "$dev_type" != "disk" ]]; then
+        log_error "$drive is a $dev_type, not a whole disk. Refusing to write."
+        return 1
+    fi
+
+    print_info "About to erase this disk:"
+    lsblk -d -o NAME,SIZE,MODEL,TRAN "$drive"
+    echo ${NEWLINE}
+    print_info "All partitions and data on $drive will be destroyed."
+    read -p "Retype $drive to confirm: " confirm_drive
+    echo "-------------------------------------------------------------------------------------------------"
+
+    if [[ "$confirm_drive" != "$drive" ]]; then
+        log_error "Confirmation did not match $drive. Nothing was written."
+        return 1
+    fi
+
+    print_info "Disk confirmation matched $drive."
+    return 0
 }
 
 function validate_partitions {
@@ -253,6 +305,16 @@ function partition_Drive {
     
     # Store firmware type for hArchPost script
     echo "$is_uefi" > firmware_type.txt
+
+    if [[ "$is_uefi" != "true" ]]; then
+        case "$drive" in
+            *nvme*|*mmcblk*|*sd*|*vd*|*xvd*) ;;
+            *)
+                echo "Error: Something happened with BIOS install..."
+                return 1
+                ;;
+        esac
+    fi
 
     if [[ "$is_uefi" == "true" ]]; then
         cmd_list=(
@@ -350,16 +412,33 @@ function partition_Drive {
             return 1
         fi
     else
-        if [[ $drive == *sd* ]]; then
-            mkswap "${drive}1"         
-            mkfs.ext4 "${drive}2"      
+        local swap_part root_part
+        case "$drive" in
+            *nvme*|*mmcblk*)
+                swap_part="${drive}p1"
+                root_part="${drive}p2"
+                ;;
+            *sd*|*vd*|*xvd*)
+                swap_part="${drive}1"
+                root_part="${drive}2"
+                ;;
+            *)
+                echo "Error: Something happened with BIOS install..."
+                return 1
+                ;;
+        esac
 
-            swapon "${drive}1"
-            mount "${drive}2" /mnt
-        else
-            echo "Error: Something happened with BIOS install..."
-            return 1
-        fi 
+        print_info "Setting up SWAP partition (${swap_part})..."
+        mkswap "$swap_part" || { log_error "Failed to setup SWAP partition"; return 1; }
+
+        print_info "Formatting ROOT partition (${root_part}) as ext4..."
+        mkfs.ext4 "$root_part" || { log_error "Failed to format ROOT partition"; return 1; }
+
+        print_info "Enabling SWAP..."
+        swapon "$swap_part" || { log_error "Failed to enable SWAP"; return 1; }
+
+        print_info "Mounting ROOT partition..."
+        mount "$root_part" /mnt || { log_error "Failed to mount ROOT partition"; return 1; }
     fi
 }
 
@@ -367,7 +446,10 @@ function installer {
     echo "--------------------------------"
     print_info "Installing Arch base..."
     sleep 2
-    pacstrap /mnt base base-devel linux linux-firmware vi vim nano dhcpcd iwd >/dev/null 2>&1
+    if ! pacstrap /mnt base base-devel linux linux-firmware vi vim nano dhcpcd iwd; then
+        log_error "pacstrap failed."
+        return 1
+    fi
     sleep 2
     genfstab -U /mnt >> /mnt/etc/fstab
 }
@@ -398,20 +480,19 @@ main() {
     greeter
     collect_Inputs
     slear
-    check_Net || { log_error "Check your Internet"; exit 1; }
+    check_Net
     slear
     update_Keyring
     slear
 
     if [[ $MANUAL_PARTITION == 'y' || $MANUAL_PARTITION == 'Y' ]]; then
         echo "--------------------------------------"
-        if [[ -n "$DRIVE" ]]; then
-            cfdisk "$DRIVE"
-        else
+        if [[ -z "$DRIVE" ]]; then
             print_info "Please enter the drive to partition manually:"
             read -p "Enter Drive (e.g., /dev/sda): " DRIVE
-            cfdisk "$DRIVE"
         fi
+        confirm_Drive "$DRIVE" || exit 1
+        cfdisk "$DRIVE"
         print_info "Entering BASH shell. Create filesystem and mount /mnt. Type exit once finished."
         echo "-----------------------------------------------------------------------------------------"
         bash
@@ -420,11 +501,12 @@ main() {
             log_error "Drive not specified. Exiting."
             exit 1
         fi
+        confirm_Drive "$DRIVE" || exit 1
         echo "----------------------------"
         print_info "Modifying $DRIVE..."
         sleep 3
 
-        partition_Drive "$DRIVE"
+        partition_Drive "$DRIVE" || { log_error "Partitioning failed. Exiting."; exit 1; }
     fi
 
     slear
