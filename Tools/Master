@@ -54,8 +54,7 @@ masscan
 ghidra
 checksec
 ropper
-pwndbg
-peda
+gef
 frida
 lief
 dex2jar
@@ -191,6 +190,4 @@ lynis
 osquery
 suricata
 snort
-bro
 zeek
-moloch

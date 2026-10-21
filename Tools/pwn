@@ -2,8 +2,7 @@ ghidra
 radare2
 checksec
 ropper
-pwndbg
-peda
+gef
 frida
 lief
 dex2jar
