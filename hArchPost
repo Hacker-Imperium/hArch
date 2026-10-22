@@ -84,9 +84,26 @@ function collect_Inputs {
 
     # Timezone
     echo "-------------------------------------------------------------------------------------------------"
-    print_info "Timezone (example: America/Chicago)"
+    print_info "Common US timezones:"
+    echo "  [1] America/New_York      Eastern"
+    echo "  [2] America/Chicago       Central"
+    echo "  [3] America/Denver        Mountain"
+    echo "  [4] America/Phoenix       Arizona"
+    echo "  [5] America/Los_Angeles   Pacific"
+    echo "  [6] America/Anchorage     Alaska"
+    echo "  [7] Pacific/Honolulu      Hawaii"
+    print_info "Enter a number, or a zoneinfo name such as America/Chicago."
     while true; do
         read -p "Enter Timezone: " TIMEZONE
+        case "$TIMEZONE" in
+            1) TIMEZONE="America/New_York" ;;
+            2) TIMEZONE="America/Chicago" ;;
+            3) TIMEZONE="America/Denver" ;;
+            4) TIMEZONE="America/Phoenix" ;;
+            5) TIMEZONE="America/Los_Angeles" ;;
+            6) TIMEZONE="America/Anchorage" ;;
+            7) TIMEZONE="Pacific/Honolulu" ;;
+        esac
         if [[ -n "$TIMEZONE" && "$TIMEZONE" != *..* && -f "/usr/share/zoneinfo/$TIMEZONE" ]]; then
             break
         fi
@@ -96,14 +113,22 @@ function collect_Inputs {
 
     # Locale
     echo "-------------------------------------------------------------------------------------------------"
-    print_info "Locale (example: en_US.UTF-8)"
+    print_info "Locale (example: en_US.UTF-8). Press Enter to accept the default."
     while true; do
         read -p "Enter Locale [en_US.UTF-8]: " LOCALE
+        LOCALE=${LOCALE//$'\r'/}
+        LOCALE=${LOCALE#"${LOCALE%%[![:space:]]*}"}
+        LOCALE=${LOCALE%"${LOCALE##*[![:space:]]}"}
         LOCALE=${LOCALE:-en_US.UTF-8}
-        if grep -qxF "#${LOCALE} UTF-8" /etc/locale.gen 2>/dev/null || grep -qxF "${LOCALE} UTF-8" /etc/locale.gen 2>/dev/null; then
+        # locale.gen lines carry trailing spaces, so an exact match never hits.
+        if [[ -f /etc/locale.gen ]] && grep -F "$LOCALE" /etc/locale.gen | sed 's/[[:space:]]*$//' | grep -qxF "#${LOCALE} UTF-8"; then
+            break
+        fi
+        if [[ -f /etc/locale.gen ]] && grep -F "$LOCALE" /etc/locale.gen | sed 's/[[:space:]]*$//' | grep -qxF "${LOCALE} UTF-8"; then
             break
         fi
         log_error "Locale not found in /etc/locale.gen: $LOCALE"
+        print_info "Press Enter for en_US.UTF-8."
     done
     echo "-------------------------------------------------------------------------------------------------"
     # User account
@@ -152,7 +177,8 @@ function installer {
     hwclock --systohc
 
     print_info "Generating locale $LOCALE..."
-    sed -i "s/^#${LOCALE} UTF-8/${LOCALE} UTF-8/" /etc/locale.gen
+    local locale_re=${LOCALE//./\\.}
+    sed -i "s/^#${locale_re} UTF-8[[:space:]]*/${LOCALE} UTF-8/" /etc/locale.gen
     locale-gen
     echo "LANG=$LOCALE" > /etc/locale.conf
 
